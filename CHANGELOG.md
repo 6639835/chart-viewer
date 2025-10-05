@@ -8,16 +8,25 @@
 ## [Unreleased]
 
 ### 新增
+
+### 变更
+
+### 修复
+
+### 删除
+
+---
+
+## [1.0.1] - 2025-10-05
+
+### 新增
 - GitHub Actions 自动构建和发布流程
 - 跨平台安装包支持 (macOS, Windows, Linux)
 - 发布脚本工具
 
 ### 变更
 - 更新 Next.js 配置以支持静态导出
-
-### 修复
-
-### 删除
+- 将 charts 和 csv 文件夹添加到 .gitignore
 
 ---
 
@@ -55,5 +64,6 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/6639835/chart-viewer/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/6639835/chart-viewer/releases/tag/v1.0.0
