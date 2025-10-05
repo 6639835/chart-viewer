@@ -17,6 +17,41 @@
 
 ---
 
+## [1.0.8] - 2025-10-05
+
+### 新增
+- **完整的主题切换系统**：为整个应用添加亮色和暗色主题切换功能
+  - 主题切换按钮集成在 Sidebar 底部
+  - 支持亮色模式、暗色模式和跟随系统
+  - 所有组件完美适配两种主题
+- **PDF 颜色反转（黑暗模式）**：PDF 内容自动跟随主题进行颜色反转
+  - 暗色主题下 PDF 自动反转颜色，减少眼睛疲劳
+  - 亮色主题下 PDF 保持原始外观
+  - 无需额外按钮，自动同步
+
+### 变更
+- **统一 UI 风格**：ChartList 采用与 Sidebar 一致的深色主题设计
+  - 背景：亮色模式使用浅灰色，暗色模式使用深灰色
+  - 按钮和卡片样式统一
+  - 改善视觉一致性和层次感
+- **优化主题默认设置**：默认主题从固定暗色改为跟随系统（`system`）
+- **提升 PDF 渲染质量**：大幅提高自动适配模式下的 PDF 清晰度
+  - 像素密度提升至至少 3x
+  - 添加字体平滑和 GPU 加速
+  - 文字和线条更加锐利清晰
+
+### 修复
+- 修复主题切换按钮样式未适配主题的问题
+- 修复 PDF 边框过强的阴影效果（改为更柔和的阴影）
+
+### 技术细节
+- 使用 `next-themes` 实现主题切换
+- PDF 颜色反转使用 CSS `filter: invert(1) hue-rotate(180deg)`
+- PDF 渲染使用 `devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3)`
+- 添加 CSS 渲染优化：`-webkit-font-smoothing`、`transform: translateZ(0)` 等
+
+---
+
 ## [1.0.7] - 2025-10-05
 
 ### 新增
@@ -145,7 +180,8 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.0.7...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.0.8...HEAD
+[1.0.8]: https://github.com/6639835/chart-viewer/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/6639835/chart-viewer/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/6639835/chart-viewer/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/6639835/chart-viewer/compare/v1.0.4...v1.0.5

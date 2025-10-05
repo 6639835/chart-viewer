@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { ChevronDown, Search, X, Settings } from 'lucide-react';
 import { ChartCategory, CATEGORY_ORDER } from '@/types/chart';
+import ThemeToggle from './ThemeToggle';
 
 interface SidebarProps {
   airports: string[];
@@ -61,13 +62,13 @@ export default function Sidebar({
   };
 
   return (
-    <div className="w-20 bg-gray-700 dark:bg-gray-900 border-r border-gray-600 dark:border-gray-800 flex flex-col h-screen">
+    <div className="w-20 bg-gray-100 dark:bg-gray-900 border-r border-gray-300 dark:border-gray-800 flex flex-col h-screen">
       {/* Airport Selector */}
-      <div className="p-2 border-b border-gray-600 dark:border-gray-800">
+      <div className="p-2 border-b border-gray-300 dark:border-gray-800">
         <div className="relative">
           <button
             onClick={() => setIsAirportDropdownOpen(!isAirportDropdownOpen)}
-            className="w-full bg-gray-600 dark:bg-gray-800 text-white px-2 py-2 rounded flex flex-col items-center justify-center hover:bg-gray-500 dark:hover:bg-gray-700 transition-colors group"
+            className="w-full bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white px-2 py-2 rounded flex flex-col items-center justify-center hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors group"
             title={selectedAirport}
           >
             <span className="font-bold text-xs">{selectedAirport}</span>
@@ -146,8 +147,8 @@ export default function Sidebar({
                   selectedCategory === category
                     ? 'bg-blue-500 text-white shadow-lg'
                     : isDisabled
-                    ? 'text-gray-500 dark:text-gray-600 cursor-not-allowed bg-gray-600 dark:bg-gray-800 opacity-50'
-                    : 'text-white bg-gray-600 dark:bg-gray-800 hover:bg-gray-500 dark:hover:bg-gray-700'
+                    ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed bg-gray-200 dark:bg-gray-800 opacity-50'
+                    : 'text-gray-900 dark:text-white bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700'
                 }`}
               >
                 {displayName}
@@ -163,12 +164,17 @@ export default function Sidebar({
       </div>
 
       {/* Bottom icons/buttons */}
-      <div className="p-2 border-t border-gray-600 dark:border-gray-800 space-y-2">
+      <div className="p-2 border-t border-gray-300 dark:border-gray-800 space-y-2">
+        {/* Theme Toggle */}
+        <div className="w-full flex justify-center">
+          <ThemeToggle />
+        </div>
+        
         {/* Settings button */}
         {onOpenSettings && (
           <button
             onClick={onOpenSettings}
-            className="w-full p-2 text-white hover:bg-gray-600 dark:hover:bg-gray-800 rounded flex items-center justify-center transition-colors"
+            className="w-full p-2 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded flex items-center justify-center transition-colors"
             aria-label="Settings"
             title="Settings"
           >
@@ -180,7 +186,7 @@ export default function Sidebar({
         {onClose && (
           <button
             onClick={onClose}
-            className="w-full p-2 text-white hover:bg-gray-600 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+            className="w-full p-2 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded flex items-center justify-center"
             aria-label="Close sidebar"
           >
             <X className="w-5 h-5" />

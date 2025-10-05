@@ -74,3 +74,13 @@ body {
   @apply text-gray-900 dark:text-white;
 }
 
+/* PDF rendering quality improvements */
+.pdf-page-wrapper canvas {
+  /* Improve rendering quality for PDF canvas */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  image-rendering: auto;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+

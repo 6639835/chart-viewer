@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileText, Maximize2, Menu } from 'lucide-react';
 import { ChartData } from '@/types/chart';
+import { useTheme } from 'next-themes';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
@@ -26,6 +27,10 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
   const [containerWidth, setContainerWidth] = useState<number>(0);
   const [containerHeight, setContainerHeight] = useState<number>(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { theme } = useTheme();
+  
+  // Determine if colors should be inverted based on theme
+  const invertColors = theme === 'dark';
 
   // Measure container dimensions
   useEffect(() => {
@@ -178,15 +183,22 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
           onLoadError={onDocumentLoadError}
           loading=""
         >
-          <Page
-            pageNumber={pageNumber}
-            height={autoFit && containerHeight > 0 ? containerHeight : undefined}
-            scale={autoFit ? undefined : scale}
-            renderTextLayer={true}
-            renderAnnotationLayer={true}
-            className="shadow-2xl"
-            devicePixelRatio={window.devicePixelRatio || 2}
-          />
+          <div 
+            style={{ 
+              filter: invertColors ? 'invert(1) hue-rotate(180deg)' : 'none'
+            }}
+            className="pdf-page-wrapper"
+          >
+            <Page
+              pageNumber={pageNumber}
+              height={autoFit && containerHeight > 0 ? containerHeight : undefined}
+              scale={autoFit ? undefined : scale}
+              renderTextLayer={true}
+              renderAnnotationLayer={true}
+              className="shadow-lg"
+              devicePixelRatio={Math.max(window.devicePixelRatio || 2, 3)}
+            />
+          </div>
         </Document>
       </div>
 

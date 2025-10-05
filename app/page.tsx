@@ -150,7 +150,7 @@ export default function Home() {
             />
             
             {/* Sliding Panel - Responsive width */}
-            <div className="absolute left-0 top-0 bottom-0 w-full sm:w-96 md:w-[28rem] lg:w-96 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-hidden z-20 shadow-2xl">
+            <div className="absolute left-0 top-0 bottom-0 w-full sm:w-96 md:w-[28rem] lg:w-96 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-hidden z-20 shadow-2xl">
               <ChartList
                 charts={currentCharts}
                 selectedChart={selectedChart}
@@ -170,7 +170,7 @@ export default function Home() {
               onOpenSidebar={() => setIsSidebarOpen(true)}
             />
           ) : (
-            <div className="flex items-center justify-center h-full bg-gray-100 dark:bg-gray-900 text-gray-400 dark:text-gray-500">
+            <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-500">
               <div className="text-center px-4">
                 <p className="text-lg">No chart selected</p>
                 <p className="text-sm mt-2">

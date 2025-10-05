@@ -93,35 +93,34 @@ function parseCATRomanNumerals(roman: string): string {
 
 // Format APP chart names for better readability
 function formatAppChartName(chartName: string): string {
-  // First, extract any content in parentheses to preserve it
-  const parenthesesMatch = chartName.match(/(\([^)]+\))$/);
-  const parenthesesContent = parenthesesMatch ? parenthesesMatch[1] : '';
-  
   // Remove RWY and runway numbers (e.g., RWY01, RWY18L, RWY36R)
   let formatted = chartName.replace(/RWY\d{2}[LRC]?/gi, '').trim();
   
-  // Remove parentheses content temporarily for processing
-  formatted = formatted.replace(/\([^)]+\)$/, '').trim();
-  
-  // Handle lowercase z, y, x suffixes (convert to uppercase with space before them)
-  const suffixMatch = formatted.match(/([zyx])$/i);
+  // Handle lowercase w, z, y, x suffixes FIRST (before processing parentheses)
+  const suffixMatch = formatted.match(/([wzyx])(?=\(|$)/i);
   const suffix = suffixMatch ? ` ${suffixMatch[1].toUpperCase()}` : '';
   if (suffixMatch) {
-    formatted = formatted.replace(/[zyx]$/i, '').trim();
+    formatted = formatted.replace(/([wzyx])(?=\(|$)/i, '').trim();
+  }
+  
+  // Extract final waypoint/fix parentheses (last one, usually a waypoint like DUMIX, ELNUN)
+  const finalParenMatch = formatted.match(/(\([^)]+\))$/);
+  const finalParen = finalParenMatch ? finalParenMatch[1] : '';
+  if (finalParenMatch) {
+    formatted = formatted.replace(/\([^)]+\)$/, '').trim();
   }
   
   // Process the main part using specific patterns
-  // Pattern matching for common combinations
+  // Important: Match more specific patterns first before generic ones
+  
   if (/^RNAVCAT/i.test(formatted)) {
     // RNAVCAT-IIIILSDMEz -> RNAV CAT-I/II ILS/DME
-    // RNAVCAT-IIIIIAIIILSDME -> RNAV CAT-I/II/IIIA ILS/DME
     formatted = formatted
       .replace(/^RNAV/i, 'RNAV ')
       .replace(/CAT-?([I]+A?I?)LSDME/i, (match, roman) => {
         const parsed = parseCATRomanNumerals(roman.toUpperCase());
         return `CAT-${parsed} ILS/DME`;
       });
-    // Handle ILSDME pattern if not matched above
     if (formatted.includes('ILSDME')) {
       formatted = formatted
         .replace(/CAT-?([I]+A?)ILSDME/i, (match, roman) => {
@@ -137,12 +136,59 @@ function formatAppChartName(chartName: string): string {
     formatted = formatted
       .replace(/^RNAV/i, 'RNAV')
       .replace(/DME/i, '/DME');
+  } else if (/^RNPCAT/i.test(formatted)) {
+    // RNPCAT-IIIILSDMEx -> RNP CAT-I/II ILS/DME
+    formatted = formatted
+      .replace(/^RNP/i, 'RNP ')
+      .replace(/CAT-?([I]+A?I?)LSDME/i, (match, roman) => {
+        const parsed = parseCATRomanNumerals(roman.toUpperCase());
+        return `CAT-${parsed} ILS/DME`;
+      });
+    if (formatted.includes('ILSDME')) {
+      formatted = formatted
+        .replace(/CAT-?([I]+A?)ILSDME/i, (match, roman) => {
+          const parsed = parseCATRomanNumerals(roman.toUpperCase());
+          return `CAT-${parsed} ILS/DME`;
+        });
+    }
+  } else if (/^RNP\(AR\)ILSDME/i.test(formatted)) {
+    // RNP(AR)ILSDMEw -> RNP (AR) ILS/DME
+    formatted = formatted.replace(/^RNP\(AR\)ILSDME/i, 'RNP (AR) ILS/DME');
+  } else if (/^RNP\(AR\)ILS/i.test(formatted)) {
+    // RNP(AR)ILSz -> RNP (AR) ILS
+    formatted = formatted.replace(/^RNP\(AR\)ILS/i, 'RNP (AR) ILS');
+  } else if (/^RNPLOCDME/i.test(formatted)) {
+    // RNPLOCDMEz -> RNP LOC/DME
+    formatted = 'RNP LOC/DME';
   } else if (/^RNPILSDME/i.test(formatted)) {
-    // RNPILSDME -> RNP ILS/DME
+    // RNPILSDME(AR) or RNPILSDME -> RNP ILS/DME (AR) or RNP ILS/DME
+    const arMatch = formatted.match(/\(AR\)$/i);
     formatted = 'RNP ILS/DME';
+    if (arMatch) {
+      formatted = formatted + ' (AR)';
+    }
+  } else if (/^RNPILS/i.test(formatted)) {
+    // RNPILSx -> RNP ILS
+    formatted = 'RNP ILS';
   } else if (/^RNP/i.test(formatted)) {
-    // Standalone RNP
-    formatted = 'RNP';
+    // RNP with optional (AR) or standalone
+    // Handle: RNP(AR) -> RNP Y (AR) (suffix goes BEFORE (AR))
+    const arMatch = formatted.match(/^RNP\(AR\)/i);
+    if (arMatch) {
+      formatted = `RNP${suffix} (AR)`.trim();
+      // Mark that suffix is already added
+      formatted = formatted.replace(/\s+/g, ' ');
+      // Skip adding suffix later
+      const suffixAlreadyAdded = true;
+    } else {
+      formatted = 'RNP';
+    }
+  } else if (/^LOCDME/i.test(formatted)) {
+    // LOCDME -> LOC/DME
+    formatted = 'LOC/DME';
+  } else if (/^LOC/i.test(formatted)) {
+    // Standalone LOC
+    formatted = 'LOC';
   } else if (/^ILSDME/i.test(formatted)) {
     // ILSDME -> ILS/DME
     formatted = 'ILS/DME';
@@ -163,16 +209,21 @@ function formatAppChartName(chartName: string): string {
     formatted = 'NDB';
   }
   
-  // Add suffix back
-  formatted = formatted + suffix;
+  // Add suffix back (unless it contains it already from RNP(AR) case)
+  if (!formatted.includes(suffix.trim()) || suffix === '') {
+    formatted = formatted + suffix;
+  }
   
   // Clean up multiple spaces
   formatted = formatted.replace(/\s+/g, ' ').trim();
   
-  // Re-add parentheses content if it exists
-  if (parenthesesContent) {
-    formatted = `${formatted} ${parenthesesContent}`;
+  // Re-add final parentheses (waypoint/fix) if it exists
+  if (finalParen) {
+    formatted = `${formatted} ${finalParen}`;
   }
+  
+  // Clean up multiple spaces again
+  formatted = formatted.replace(/\s+/g, ' ').trim();
   
   return formatted;
 }
@@ -287,7 +338,7 @@ export default function ChartList({
   
   if (sortedCharts.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-500">
+      <div className="flex items-center justify-center h-full bg-white dark:bg-gray-900 text-gray-400 dark:text-gray-500">
         <div className="text-center">
           <FileText className="w-16 h-16 mx-auto mb-4 opacity-50" />
           <p className="text-lg">No charts available</p>
@@ -300,9 +351,9 @@ export default function ChartList({
   // Render ungrouped list for TAXI
   if (!shouldGroupByRunway) {
     return (
-      <div className="h-full overflow-y-auto bg-gray-50 dark:bg-gray-800">
+      <div className="h-full overflow-y-auto bg-white dark:bg-gray-900">
         <div className="p-4 sm:p-6">
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-800">
             Charts ({sortedCharts.length})
           </h2>
           <div className="space-y-2">
@@ -310,15 +361,15 @@ export default function ChartList({
               <button
                 key={chart.ChartId}
                 onClick={() => onChartSelect(chart)}
-                className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                className={`w-full p-4 rounded-lg transition-all text-left ${
                   selectedChart?.ChartId === chart.ChartId
-                    ? 'bg-blue-500 border-blue-500 text-white shadow-lg scale-[1.02]'
-                    : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-gray-650 hover:shadow-md'
+                    ? 'bg-blue-500 text-white shadow-lg'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
               >
                 <div className="flex items-start gap-3">
                   <FileText className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
-                    selectedChart?.ChartId === chart.ChartId ? 'text-white' : 'text-blue-500'
+                    selectedChart?.ChartId === chart.ChartId ? 'text-white' : 'text-blue-500 dark:text-blue-400'
                   }`} />
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm sm:text-base mb-2 line-clamp-2 leading-snug">
@@ -348,9 +399,9 @@ export default function ChartList({
 
   // Render grouped list for other categories
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 dark:bg-gray-800">
+    <div className="h-full overflow-y-auto bg-white dark:bg-gray-900">
       <div className="p-4 sm:p-6">
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-700">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-800">
           Charts ({sortedCharts.length})
         </h2>
         
@@ -363,7 +414,7 @@ export default function ChartList({
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                   selectedRunwayFilter === null
                     ? 'bg-blue-500 text-white shadow-md'
-                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
               >
                 全部
@@ -375,7 +426,7 @@ export default function ChartList({
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                     selectedRunwayFilter === runway
                       ? 'bg-blue-500 text-white shadow-md'
-                      : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
                   }`}
                 >
                   {runway === '其他' ? '其他' : `RWY ${runway}`}
@@ -392,11 +443,11 @@ export default function ChartList({
             return (
               <div key={runway} className="space-y-3">
                 {/* Runway Header */}
-                <div className="flex items-center justify-between px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg">
+                <div className="flex items-center justify-between px-3 py-2 bg-gray-200 dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-700">
                   <h3 className="font-bold text-sm sm:text-base text-gray-900 dark:text-white">
                     {runway === '其他' ? '其他图表' : `RWY ${runway}`}
                   </h3>
-                  <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 px-2 py-1 rounded font-medium flex-shrink-0 ml-2">
+                  <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded font-medium flex-shrink-0 ml-2">
                     {runwayCharts.length} 张
                   </span>
                 </div>
@@ -407,15 +458,15 @@ export default function ChartList({
                     <button
                       key={chart.ChartId}
                       onClick={() => onChartSelect(chart)}
-                      className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                      className={`w-full p-4 rounded-lg transition-all text-left ${
                         selectedChart?.ChartId === chart.ChartId
-                          ? 'bg-blue-500 border-blue-500 text-white shadow-lg scale-[1.02]'
-                          : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-gray-650 hover:shadow-md'
+                          ? 'bg-blue-500 text-white shadow-lg'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
                       }`}
                     >
                       <div className="flex items-start gap-3">
                         <FileText className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
-                          selectedChart?.ChartId === chart.ChartId ? 'text-white' : 'text-blue-500'
+                          selectedChart?.ChartId === chart.ChartId ? 'text-white' : 'text-blue-500 dark:text-blue-400'
                         }`} />
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-sm sm:text-base mb-2 line-clamp-2 leading-snug">
