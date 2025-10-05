@@ -6,6 +6,11 @@
   "engines": {
     "node": ">=22.0.0"
   },
+  "description": "Aviation chart viewer application for viewing PDF approach charts",
+  "author": {
+    "name": "Justin",
+    "email": "epa6643@gmail.com"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
