@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: GitHub Discussions
+    url: https://github.com/6639835/chart-viewer/discussions
+    about: Ask questions, share ideas, or discuss the project
+  - name: Email Support
+    url: mailto:epa6643@gmail.com
+    about: Contact the maintainer directly for support or questions
