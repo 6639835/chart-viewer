@@ -4,9 +4,19 @@ import { AppConfig, DEFAULT_CONFIG } from '@/types/config';
 
 const CONFIG_FILE = 'config.json';
 
+// Get config file path - use USER_DATA_PATH in Electron or cwd in web mode
+function getConfigPath(): string {
+  // In Electron, the USER_DATA_PATH env var will be set
+  if (process.env.USER_DATA_PATH) {
+    return path.join(process.env.USER_DATA_PATH, CONFIG_FILE);
+  }
+  // Fallback to current directory (web mode)
+  return path.join(process.cwd(), CONFIG_FILE);
+}
+
 export async function getConfig(): Promise<AppConfig> {
   try {
-    const configPath = path.join(process.cwd(), CONFIG_FILE);
+    const configPath = getConfigPath();
     const configContent = await fs.readFile(configPath, 'utf-8');
     const config = JSON.parse(configContent);
     
@@ -22,7 +32,16 @@ export async function getConfig(): Promise<AppConfig> {
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {
-  const configPath = path.join(process.cwd(), CONFIG_FILE);
+  const configPath = getConfigPath();
+  
+  // Ensure directory exists
+  const configDir = path.dirname(configPath);
+  try {
+    await fs.mkdir(configDir, { recursive: true });
+  } catch (error) {
+    // Directory might already exist, that's ok
+  }
+  
   await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
 }
 
