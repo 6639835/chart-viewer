@@ -1,0 +1,82 @@
+{
+  "name": "chart-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "electron": "electron .",
+    "electron:dev": "node electron-dev.js",
+    "electron:build": "next build && electron-builder",
+    "electron:build:mac": "next build && electron-builder --mac",
+    "electron:build:win": "next build && electron-builder --win",
+    "electron:build:linux": "next build && electron-builder --linux",
+    "generate-icons": "node scripts/generate-icons.js",
+    "release": "bash scripts/release.sh"
+  },
+  "build": {
+    "appId": "com.chartviewer.efb",
+    "productName": "Chart Viewer",
+    "files": [
+      "electron/**/*",
+      "out/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "public/icon.png"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "public/icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "public/icon.png",
+      "category": "Utility"
+    }
+  },
+  "dependencies": {
+    "iconv-lite": "^0.6.3",
+    "lucide-react": "^0.446.0",
+    "next": "^14.2.0",
+    "next-themes": "^0.4.6",
+    "papaparse": "^5.4.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-pdf": "^9.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/papaparse": "^5.3.14",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.19",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^38.2.1",
+    "electron-builder": "^26.0.12",
+    "postcss": "^8.4.38",
+    "sharp": "^0.34.4",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.4.5",
+    "wait-on": "^9.0.1"
+  }
+}
