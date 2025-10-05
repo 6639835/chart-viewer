@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+
+// Force dynamic rendering - this page requires runtime data
+export const dynamic = 'force-dynamic';
 import Sidebar from '@/components/Sidebar';
 import ChartList from '@/components/ChartList';
 import PDFViewer from '@/components/PDFViewer';

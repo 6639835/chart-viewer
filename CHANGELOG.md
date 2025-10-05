@@ -17,11 +17,29 @@
 
 ---
 
-## [1.0.2] - 2025-10-05
+## [1.0.3] - 2025-10-05
 
 ### 修复
 - 修复 ThemeProvider 中 next-themes 类型导入错误
 - 移除静态导出配置以支持 API 路由正常工作
+- 升级 Node.js 要求至 22.0.0+ 以支持 Promise.withResolvers API
+- 配置主页为动态渲染以避免构建时预渲染错误
+
+### 变更
+- 更新 GitHub Actions 工作流使用 Node.js 22
+
+---
+
+## [1.0.2] - 2025-10-05
+
+### 新增
+- GitHub Actions 自动构建和发布流程
+- 跨平台安装包支持 (macOS, Windows, Linux)
+- 发布脚本工具
+
+### 变更
+- 更新 Next.js 配置以支持静态导出
+- 将 charts 和 csv 文件夹添加到 .gitignore
 
 ---
 
@@ -72,7 +90,8 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/6639835/chart-viewer/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/6639835/chart-viewer/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/6639835/chart-viewer/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/6639835/chart-viewer/releases/tag/v1.0.0
