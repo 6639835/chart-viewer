@@ -17,6 +17,16 @@
 
 ---
 
+## [1.0.5] - 2025-10-05
+
+### 修复
+- 修复 GitHub Actions 工作流权限以允许创建发布版本
+
+### 变更
+- 为 GitHub Actions 工作流添加 contents: write 权限
+
+---
+
 ## [1.0.4] - 2025-10-05
 
 ### 修复
@@ -31,8 +41,7 @@
 
 ---
 
-
-## [1.0.2] - 2025-10-05
+## [1.0.3] - 2025-10-05
 
 ### 新增
 - GitHub Actions 自动构建和发布流程
@@ -45,16 +54,17 @@
 
 ---
 
-## [1.0.1] - 2025-10-05
-
-### 新增
-- GitHub Actions 自动构建和发布流程
-- 跨平台安装包支持 (macOS, Windows, Linux)
-- 发布脚本工具
+## [1.0.2] - 2025-10-05
 
 ### 变更
-- 更新 Next.js 配置以支持静态导出
-- 将 charts 和 csv 文件夹添加到 .gitignore
+- 项目版本调整
+
+---
+
+## [1.0.1] - 2025-10-05
+
+### 变更
+- 项目版本调整
 
 ---
 
@@ -92,7 +102,8 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/6639835/chart-viewer/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/6639835/chart-viewer/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/6639835/chart-viewer/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/6639835/chart-viewer/compare/v1.0.1...v1.0.2
