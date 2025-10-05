@@ -17,6 +17,26 @@
 
 ---
 
+## [1.0.7] - 2025-10-05
+
+### 新增
+- **智能图表目录格式支持**：自动检测并支持两种图表目录结构
+  - 扁平结构：所有图表文件在同一目录下
+  - 嵌套结构：按机场 ICAO 代码组织子目录
+- **跑道筛选功能**：在图表列表中新增跑道筛选按钮，可快速筛选特定跑道的图表
+- **分类切换优化**：点击已选中的分类可取消选择，提升用户体验
+
+### 变更
+- **PDF 文件查找逻辑**：优化文件查找算法，优先尝试嵌套格式，失败时自动回退到扁平格式
+- **跑道标签显示**：将跑道标签从"跑道 XX"改为"RWY XX"，更符合航空标准
+- **文档更新**：README 中新增图表目录格式说明和使用指南
+
+### 修复
+- 修复图表文件在不同目录结构下的查找问题
+- 优化文件路径解析，提高 PDF 加载成功率
+
+---
+
 ## [1.0.6] - 2025-10-05
 
 ### 修复
@@ -125,7 +145,9 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.0.7...HEAD
+[1.0.7]: https://github.com/6639835/chart-viewer/compare/v1.0.6...v1.0.7
+[1.0.6]: https://github.com/6639835/chart-viewer/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/6639835/chart-viewer/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/6639835/chart-viewer/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/6639835/chart-viewer/compare/v1.0.2...v1.0.3

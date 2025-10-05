@@ -2,7 +2,7 @@
 
 import { ChartData, ChartCategory } from '@/types/chart';
 import { FileText } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 interface ChartListProps {
   charts: ChartData[];
@@ -226,6 +226,14 @@ export default function ChartList({
   onChartSelect,
   category,
 }: ChartListProps) {
+  // State for runway filter
+  const [selectedRunwayFilter, setSelectedRunwayFilter] = useState<string | null>(null);
+  
+  // Reset filter when category changes
+  useEffect(() => {
+    setSelectedRunwayFilter(null);
+  }, [category]);
+  
   // TAXI category should not be grouped by runway
   const shouldGroupByRunway = category !== 'TAXI';
   
@@ -270,6 +278,12 @@ export default function ChartList({
       return a.localeCompare(b);
     });
   }, [groupedCharts]);
+  
+  // Filter runways based on selected filter
+  const filteredRunways = useMemo(() => {
+    if (!selectedRunwayFilter) return sortedRunways;
+    return sortedRunways.filter(runway => runway === selectedRunwayFilter);
+  }, [sortedRunways, selectedRunwayFilter]);
   
   if (sortedCharts.length === 0) {
     return (
@@ -339,8 +353,40 @@ export default function ChartList({
         <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-700">
           Charts ({sortedCharts.length})
         </h2>
+        
+        {/* Runway Filter */}
+        {sortedRunways.length > 1 && (
+          <div className="mb-4">
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setSelectedRunwayFilter(null)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  selectedRunwayFilter === null
+                    ? 'bg-blue-500 text-white shadow-md'
+                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                }`}
+              >
+                全部
+              </button>
+              {sortedRunways.map(runway => (
+                <button
+                  key={runway}
+                  onClick={() => setSelectedRunwayFilter(runway)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    selectedRunwayFilter === runway
+                      ? 'bg-blue-500 text-white shadow-md'
+                      : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  {runway === '其他' ? '其他' : `RWY ${runway}`}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        
         <div className="space-y-5 sm:space-y-6">
-          {sortedRunways.map(runway => {
+          {filteredRunways.map(runway => {
             const runwayCharts = groupedCharts!.get(runway)!;
             
             return (
@@ -348,7 +394,7 @@ export default function ChartList({
                 {/* Runway Header */}
                 <div className="flex items-center justify-between px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg">
                   <h3 className="font-bold text-sm sm:text-base text-gray-900 dark:text-white">
-                    {runway === '其他' ? '其他图表' : `跑道 ${runway}`}
+                    {runway === '其他' ? '其他图表' : `RWY ${runway}`}
                   </h3>
                   <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 px-2 py-1 rounded font-medium flex-shrink-0 ml-2">
                     {runwayCharts.length} 张

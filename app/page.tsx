@@ -54,7 +54,12 @@ export default function Home() {
   };
 
   const handleCategoryChange = (category: ChartCategory) => {
-    setSelectedCategory(category);
+    // Toggle: if already selected, deselect; otherwise select
+    if (selectedCategory === category) {
+      setSelectedCategory(null);
+    } else {
+      setSelectedCategory(category);
+    }
     setSelectedChart(null);
   };
 

@@ -166,7 +166,33 @@ The application reads chart metadata from `csv/Charts.csv` with the following st
 - `PAGE_NUMBER`: Page identifier used in PDF filename
 - Other metadata fields
 
-PDF files are named as: `{AirportIcao}-{PAGE_NUMBER}.pdf`
+### Supported Chart Directory Formats
+
+The application **automatically detects** and supports two directory formats for chart PDFs:
+
+#### Format 1: Flat Structure (All charts in one directory)
+```
+charts/
+  ├── ZBAA-AD2-ZBAA-1-1.pdf
+  ├── ZBAA-AD2-ZBAA-1-2.pdf
+  ├── ZSSS-AD2-ZSSS-1-1.pdf
+  └── 机场细则.pdf
+```
+
+#### Format 2: Nested Structure (Organized by airport)
+```
+charts/
+  ├── ZBAA/
+  │   ├── ZBAA-AD2-ZBAA-1-1.pdf
+  │   ├── ZBAA-AD2-ZBAA-1-2.pdf
+  │   └── ZBAA-AD2-ZBAA-1-3.pdf
+  ├── ZSSS/
+  │   ├── ZSSS-AD2-ZSSS-1-1.pdf
+  │   └── ZSSS-AD2-ZSSS-1-2.pdf
+  └── 机场细则.pdf
+```
+
+**Note**: The system will automatically try the nested format first (checking `{ICAO}/filename`), then fall back to the flat format if the file is not found. No configuration needed!
 
 ## Technologies Used
 
