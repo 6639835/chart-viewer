@@ -21,12 +21,17 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [scale, setScale] = useState<number>(1.0);
+  const [renderScale, setRenderScale] = useState<number>(2.0); // High quality base render scale
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [autoFit, setAutoFit] = useState<boolean>(true);
   const [containerWidth, setContainerWidth] = useState<number>(0);
   const [containerHeight, setContainerHeight] = useState<number>(0);
+  const [pageWidth, setPageWidth] = useState<number>(0); // Original PDF page width at scale 1.0
+  const [pageHeight, setPageHeight] = useState<number>(0); // Original PDF page height at scale 1.0
   const containerRef = useRef<HTMLDivElement>(null);
+  const pdfWrapperRef = useRef<HTMLDivElement>(null);
+  const rerenderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { theme } = useTheme();
   
   // Determine if colors should be inverted based on theme
@@ -54,6 +59,58 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
     return () => resizeObserver.disconnect();
   }, []);
 
+  // Mouse wheel zoom (Ctrl/Cmd + scroll) with intelligent re-rendering
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      // Check if Ctrl (Windows/Linux) or Cmd (Mac) is pressed
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        
+        // Disable auto-fit when manually zooming
+        setAutoFit(false);
+        
+        // deltaY is positive when scrolling down, negative when scrolling up
+        // Scroll down = zoom out, scroll up = zoom in
+        const delta = e.deltaY > 0 ? -0.05 : 0.05;
+        
+        // Update scale directly - CSS transform handles the immediate visual scaling
+        setScale(prevScale => {
+          const newScale = Math.min(Math.max(prevScale + delta, 0.5), 3.0);
+          
+          // Clear existing re-render timeout
+          if (rerenderTimeoutRef.current) {
+            clearTimeout(rerenderTimeoutRef.current);
+          }
+          
+          // Schedule intelligent re-rendering after user stops zooming
+          rerenderTimeoutRef.current = setTimeout(() => {
+            // If zoomed significantly beyond current render scale, re-render at higher quality
+            // Or if zoomed below half the render scale, render at lower quality to save memory
+            if (newScale > renderScale * 0.8 || newScale < renderScale * 0.3) {
+              // Choose optimal render scale: 1.5x the target scale, clamped between 1.5 and 3.0
+              const optimalRenderScale = Math.min(Math.max(newScale * 1.5, 1.5), 3.0);
+              setRenderScale(optimalRenderScale);
+            }
+          }, 500);
+          
+          return newScale;
+        });
+      }
+    };
+
+    const container = containerRef.current;
+    container.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      if (rerenderTimeoutRef.current) {
+        clearTimeout(rerenderTimeoutRef.current);
+      }
+    };
+  }, [renderScale]);
+
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
     setLoading(false);
@@ -66,25 +123,67 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
     setLoading(false);
   }
 
+  // Callback when a page finishes rendering - capture original dimensions
+  function onPageLoadSuccess(page: any) {
+    // Get viewport at scale 1.0 to get original dimensions
+    const viewport = page.getViewport({ scale: 1.0 });
+    setPageWidth(viewport.width);
+    setPageHeight(viewport.height);
+  }
+
   const changePage = (offset: number) => {
     setPageNumber(prevPageNumber => {
       const newPage = prevPageNumber + offset;
+      // Reset page dimensions when changing pages so they'll be recalculated
+      setPageWidth(0);
+      setPageHeight(0);
       return Math.min(Math.max(1, newPage), numPages);
     });
   };
 
   const zoomIn = () => {
     setAutoFit(false);
-    setScale(prev => Math.min(prev + 0.2, 3.0));
+    setScale(prev => {
+      const newScale = Math.min(prev + 0.2, 3.0);
+      // If zooming significantly, schedule a re-render for better quality
+      if (rerenderTimeoutRef.current) {
+        clearTimeout(rerenderTimeoutRef.current);
+      }
+      rerenderTimeoutRef.current = setTimeout(() => {
+        if (newScale > renderScale * 0.8) {
+          const optimalRenderScale = Math.min(Math.max(newScale * 1.5, 1.5), 3.0);
+          setRenderScale(optimalRenderScale);
+        }
+      }, 500);
+      return newScale;
+    });
   };
   
   const zoomOut = () => {
     setAutoFit(false);
-    setScale(prev => Math.max(prev - 0.2, 0.5));
+    setScale(prev => {
+      const newScale = Math.max(prev - 0.2, 0.5);
+      // If zooming significantly, schedule a re-render
+      if (rerenderTimeoutRef.current) {
+        clearTimeout(rerenderTimeoutRef.current);
+      }
+      rerenderTimeoutRef.current = setTimeout(() => {
+        if (newScale < renderScale * 0.3) {
+          const optimalRenderScale = Math.min(Math.max(newScale * 1.5, 1.5), 3.0);
+          setRenderScale(optimalRenderScale);
+        }
+      }, 500);
+      return newScale;
+    });
   };
   
   const toggleAutoFit = () => {
     setAutoFit(prev => !prev);
+    if (!autoFit) {
+      // Reset scales when turning on autoFit
+      setScale(1.0);
+      setRenderScale(2.0);
+    }
   };
 
   if (error) {
@@ -135,18 +234,21 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
               onClick={zoomOut}
               disabled={scale <= 0.5 || autoFit}
               className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Zoom Out"
+              title="Zoom Out (or use Ctrl/Cmd + Scroll)"
             >
               <ZoomOut className="w-4 h-4" />
             </button>
-            <span className="text-gray-900 dark:text-white text-xs w-12 text-center">
+            <span 
+              className="text-gray-900 dark:text-white text-xs w-12 text-center"
+              title="Use Ctrl/Cmd + Mouse Wheel to zoom"
+            >
               {autoFit ? 'Auto' : `${Math.round(scale * 100)}%`}
             </span>
             <button
               onClick={zoomIn}
               disabled={scale >= 3.0 || autoFit}
               className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Zoom In"
+              title="Zoom In (or use Ctrl/Cmd + Scroll)"
             >
               <ZoomIn className="w-4 h-4" />
             </button>
@@ -170,8 +272,8 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
       {/* PDF Content */}
       <div 
         ref={containerRef}
-        className={`flex-1 overflow-auto flex justify-center p-2 sm:p-4 bg-gray-200 dark:bg-gray-900 ${
-          autoFit ? 'items-center' : 'items-start'
+        className={`flex-1 overflow-auto p-2 sm:p-4 bg-gray-200 dark:bg-gray-900 ${
+          autoFit ? 'flex items-center justify-center' : ''
         }`}
       >
         {loading && (
@@ -183,21 +285,44 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
           onLoadError={onDocumentLoadError}
           loading=""
         >
-          <div 
-            style={{ 
-              filter: invertColors ? 'invert(1) hue-rotate(180deg)' : 'none'
+          {/* Outer container: defines the correct scroll area size based on user's scale */}
+          <div
+            style={{
+              width: autoFit || !pageWidth ? 'auto' : `${pageWidth * scale}px`,
+              height: autoFit || !pageHeight ? 'auto' : `${pageHeight * scale}px`,
+              position: 'relative',
+              display: autoFit ? 'flex' : 'block',
+              justifyContent: autoFit ? 'center' : 'initial',
+              alignItems: autoFit ? 'center' : 'initial',
+              margin: autoFit ? 'auto' : '0 auto' // Center horizontally when smaller than viewport
             }}
-            className="pdf-page-wrapper"
           >
-            <Page
-              pageNumber={pageNumber}
-              height={autoFit && containerHeight > 0 ? containerHeight : undefined}
-              scale={autoFit ? undefined : scale}
-              renderTextLayer={true}
-              renderAnnotationLayer={true}
-              className="shadow-lg"
-              devicePixelRatio={Math.max(window.devicePixelRatio || 2, 3)}
-            />
+            {/* Inner container: applies transform to scale the high-res rendered PDF */}
+            <div 
+              ref={pdfWrapperRef}
+              style={{ 
+                filter: invertColors ? 'invert(1) hue-rotate(180deg)' : 'none',
+                transform: autoFit ? 'none' : `scale(${scale / renderScale})`,
+                transformOrigin: 'top left',
+                transition: 'transform 0.05s ease-out',
+                willChange: 'transform',
+                position: autoFit ? 'static' : 'absolute',
+                top: 0,
+                left: 0
+              }}
+              className="pdf-page-wrapper"
+            >
+              <Page
+                pageNumber={pageNumber}
+                height={autoFit && containerHeight > 0 ? containerHeight : undefined}
+                scale={autoFit ? undefined : renderScale}
+                renderTextLayer={true}
+                renderAnnotationLayer={true}
+                className="shadow-lg"
+                devicePixelRatio={2}
+                onLoadSuccess={onPageLoadSuccess}
+              />
+            </div>
           </div>
         </Document>
       </div>

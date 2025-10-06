@@ -63,6 +63,10 @@ export default function Home() {
     setSelectedChart(null);
   };
 
+  const handleCloseCategory = () => {
+    setSelectedCategory(null);
+  };
+
   const handleChartSelect = (chart: ChartData) => {
     setSelectedChart(chart);
     setSelectedCategory(null); // Close the chart list after selection
@@ -120,6 +124,7 @@ export default function Home() {
                 categoryCounts={categoryCounts}
                 onClose={() => setIsSidebarOpen(false)}
                 onOpenSettings={() => setIsSettingsOpen(true)}
+                onCloseCategory={handleCloseCategory}
               />
             </div>
           </>
@@ -136,6 +141,7 @@ export default function Home() {
           onCategoryChange={handleCategoryChange}
           categoryCounts={categoryCounts}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onCloseCategory={handleCloseCategory}
         />
       </div>
 

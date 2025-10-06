@@ -14,6 +14,7 @@ interface SidebarProps {
   categoryCounts: Record<ChartCategory, number>;
   onClose?: () => void;
   onOpenSettings?: () => void;
+  onCloseCategory?: () => void;
 }
 
 // Category display names mapping
@@ -35,6 +36,7 @@ export default function Sidebar({
   categoryCounts,
   onClose,
   onOpenSettings,
+  onCloseCategory,
 }: SidebarProps) {
   const [isAirportDropdownOpen, setIsAirportDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -67,7 +69,13 @@ export default function Sidebar({
       <div className="p-2 border-b border-gray-300 dark:border-gray-800">
         <div className="relative">
           <button
-            onClick={() => setIsAirportDropdownOpen(!isAirportDropdownOpen)}
+            onClick={() => {
+              // Close chart list if open before opening airport dropdown
+              if (!isAirportDropdownOpen && selectedCategory && onCloseCategory) {
+                onCloseCategory();
+              }
+              setIsAirportDropdownOpen(!isAirportDropdownOpen);
+            }}
             className="w-full bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white px-2 py-2 rounded flex flex-col items-center justify-center hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors group"
             title={selectedAirport}
           >
