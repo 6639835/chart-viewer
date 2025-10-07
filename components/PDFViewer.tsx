@@ -22,6 +22,7 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [scale, setScale] = useState<number>(1.0);
   const [renderScale, setRenderScale] = useState<number>(2.0); // High quality base render scale
+  const [autoFitScale, setAutoFitScale] = useState<number>(1.0); // Calculated scale for auto-fit mode
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [autoFit, setAutoFit] = useState<boolean>(true);
@@ -29,6 +30,9 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
   const [containerHeight, setContainerHeight] = useState<number>(0);
   const [pageWidth, setPageWidth] = useState<number>(0); // Original PDF page width at scale 1.0
   const [pageHeight, setPageHeight] = useState<number>(0); // Original PDF page height at scale 1.0
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [scrollStart, setScrollStart] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfWrapperRef = useRef<HTMLDivElement>(null);
   const rerenderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -46,8 +50,20 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
         // Account for padding: mobile (8px), tablet/desktop (16px)
         const paddingX = window.innerWidth < 640 ? 16 : 32; // 2 * (p-2 or p-4)
         const paddingY = window.innerWidth < 640 ? 16 : 32;
-        setContainerWidth(containerRef.current.clientWidth - paddingX);
-        setContainerHeight(containerRef.current.clientHeight - paddingY);
+        const newWidth = containerRef.current.clientWidth - paddingX;
+        const newHeight = containerRef.current.clientHeight - paddingY;
+        setContainerWidth(newWidth);
+        setContainerHeight(newHeight);
+        
+        // Recalculate autoFitScale when container size changes
+        if (autoFit && pageHeight > 0 && newHeight > 0) {
+          const fitScale = newHeight / pageHeight;
+          setAutoFitScale(fitScale);
+          
+          // Update renderScale for better quality
+          const optimalRenderScale = Math.min(Math.max(fitScale * 1.5, 2.0), 4.0);
+          setRenderScale(optimalRenderScale);
+        }
       }
     };
     
@@ -57,7 +73,64 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
     resizeObserver.observe(containerRef.current);
     
     return () => resizeObserver.disconnect();
-  }, []);
+  }, [autoFit, pageHeight]);
+
+  // Mouse drag to pan
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      // Only enable dragging when not in autoFit mode and not clicking on interactive elements
+      if (autoFit) return;
+      
+      // Ignore if clicking on buttons, links, or text selection
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'BUTTON' || target.tagName === 'A') return;
+      
+      setIsDragging(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+      setScrollStart({ left: container.scrollLeft, top: container.scrollTop });
+      e.preventDefault();
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      
+      e.preventDefault();
+      
+      const dx = e.clientX - dragStart.x;
+      const dy = e.clientY - dragStart.y;
+      
+      // Update scroll position (negative because we're moving the view opposite to mouse movement)
+      container.scrollLeft = scrollStart.left - dx;
+      container.scrollTop = scrollStart.top - dy;
+    };
+
+    const handleMouseUp = () => {
+      if (isDragging) {
+        setIsDragging(false);
+      }
+    };
+
+    const handleMouseLeave = () => {
+      if (isDragging) {
+        setIsDragging(false);
+      }
+    };
+
+    container.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    container.addEventListener('mouseleave', handleMouseLeave);
+
+    return () => {
+      container.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      container.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [isDragging, dragStart, scrollStart, autoFit]);
 
   // Mouse wheel zoom (Ctrl/Cmd + scroll) with intelligent re-rendering
   useEffect(() => {
@@ -129,6 +202,18 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
     const viewport = page.getViewport({ scale: 1.0 });
     setPageWidth(viewport.width);
     setPageHeight(viewport.height);
+    
+    // Calculate optimal scale for auto-fit mode
+    if (autoFit && containerHeight > 0) {
+      // Calculate scale to fit PDF height to container
+      const fitScale = containerHeight / viewport.height;
+      setAutoFitScale(fitScale);
+      
+      // Also update renderScale for auto-fit mode to ensure high quality
+      // Use at least 1.5x the fit scale, clamped between 2.0 and 4.0 for best quality
+      const optimalRenderScale = Math.min(Math.max(fitScale * 1.5, 2.0), 4.0);
+      setRenderScale(optimalRenderScale);
+    }
   }
 
   const changePage = (offset: number) => {
@@ -178,12 +263,24 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
   };
   
   const toggleAutoFit = () => {
-    setAutoFit(prev => !prev);
-    if (!autoFit) {
-      // Reset scales when turning on autoFit
-      setScale(1.0);
-      setRenderScale(2.0);
-    }
+    setAutoFit(prev => {
+      const newAutoFit = !prev;
+      if (newAutoFit) {
+        // Switching to autoFit mode
+        // Recalculate autoFitScale and renderScale
+        if (pageHeight > 0 && containerHeight > 0) {
+          const fitScale = containerHeight / pageHeight;
+          setAutoFitScale(fitScale);
+          const optimalRenderScale = Math.min(Math.max(fitScale * 1.5, 2.0), 4.0);
+          setRenderScale(optimalRenderScale);
+        }
+      } else {
+        // Switching to manual mode - reset to default values
+        setScale(1.0);
+        setRenderScale(2.0);
+      }
+      return newAutoFit;
+    });
   };
 
   if (error) {
@@ -274,7 +371,11 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
         ref={containerRef}
         className={`flex-1 overflow-auto p-2 sm:p-4 bg-gray-200 dark:bg-gray-900 ${
           autoFit ? 'flex items-center justify-center' : ''
-        }`}
+        } ${isDragging ? 'select-none' : ''}`}
+        style={{ 
+          cursor: autoFit ? 'default' : (isDragging ? 'grabbing' : 'grab'),
+          userSelect: isDragging ? 'none' : 'auto'
+        }}
       >
         {loading && (
           <div className="text-gray-900 dark:text-white text-sm">Loading PDF...</div>
@@ -288,8 +389,8 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
           {/* Outer container: defines the correct scroll area size based on user's scale */}
           <div
             style={{
-              width: autoFit || !pageWidth ? 'auto' : `${pageWidth * scale}px`,
-              height: autoFit || !pageHeight ? 'auto' : `${pageHeight * scale}px`,
+              width: autoFit ? 'auto' : (!pageWidth ? 'auto' : `${pageWidth * scale}px`),
+              height: autoFit ? 'auto' : (!pageHeight ? 'auto' : `${pageHeight * scale}px`),
               position: 'relative',
               display: autoFit ? 'flex' : 'block',
               justifyContent: autoFit ? 'center' : 'initial',
@@ -302,8 +403,10 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
               ref={pdfWrapperRef}
               style={{ 
                 filter: invertColors ? 'invert(1) hue-rotate(180deg)' : 'none',
-                transform: autoFit ? 'none' : `scale(${scale / renderScale})`,
-                transformOrigin: 'top left',
+                transform: autoFit 
+                  ? `scale(${autoFitScale / renderScale})`  // Auto mode: scale from high-res to fit size
+                  : `scale(${scale / renderScale})`,         // Manual mode: scale from high-res to user scale
+                transformOrigin: autoFit ? 'center center' : 'top left',
                 transition: 'transform 0.05s ease-out',
                 willChange: 'transform',
                 position: autoFit ? 'static' : 'absolute',
@@ -314,12 +417,11 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
             >
               <Page
                 pageNumber={pageNumber}
-                height={autoFit && containerHeight > 0 ? containerHeight : undefined}
-                scale={autoFit ? undefined : renderScale}
+                scale={renderScale}
                 renderTextLayer={true}
                 renderAnnotationLayer={true}
                 className="shadow-lg"
-                devicePixelRatio={2}
+                devicePixelRatio={Math.max(window.devicePixelRatio || 1, 2)}
                 onLoadSuccess={onPageLoadSuccess}
               />
             </div>

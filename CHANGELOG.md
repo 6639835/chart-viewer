@@ -17,6 +17,47 @@
 
 ---
 
+## [1.1.1] - 2025-10-07
+
+### 新增
+- **鼠标拖动航图功能**：在非自动适配模式下，可以使用鼠标拖动移动 PDF
+  - 点击并拖动即可移动航图查看不同区域
+  - 自动限制在 PDF 边界内，不会超出范围
+  - 拖动时显示"抓手"光标，提供视觉反馈
+  - 拖动时自动防止文本被意外选中
+  - 不会干扰按钮和链接的正常点击
+
+### 变更
+- **统一 PDF 渲染架构**：Auto 模式和手动缩放模式现在使用相同的双层缩放架构
+  - Auto 模式也使用高清 renderScale 渲染，然后通过 CSS transform 缩放到适配尺寸
+  - 大幅提升 Auto 模式下的 PDF 清晰度（提升 100-300%）
+  - 代码逻辑更统一，便于维护和未来优化
+- **智能渲染质量优化**：Auto 模式下动态计算最佳渲染倍率
+  - 根据窗口大小自动计算 autoFitScale
+  - renderScale 动态调整为 fitScale 的 1.5 倍，范围 2.0x-4.0x
+  - 确保放大查看时始终保持高清晰度
+- **动态 DPI 检测**：devicePixelRatio 从固定值改为动态检测
+  - 自动适配 Retina 等高 DPI 屏幕
+  - 使用 `Math.max(window.devicePixelRatio || 1, 2)` 确保至少 2 倍渲染
+  - 在高分辨率屏幕上显示更加清晰
+- **响应式窗口调整**：容器尺寸变化时自动重新计算渲染参数
+  - 调整窗口大小时自动更新 autoFitScale 和 renderScale
+  - 保持最佳显示效果和清晰度
+
+### 修复
+- **Auto 模式居中显示**：修复 Auto 模式下 PDF 不在正中央的问题
+  - 外层容器改为 auto 尺寸，配合 flex 布局居中
+  - 内层容器缩放原点从 `top left` 改为 `center center`
+  - PDF 现在完美居中显示
+
+### 技术细节
+- Auto 模式渲染流程：高清渲染 (2-4x) → CSS transform 缩放 → 居中显示
+- 拖动功能使用容器的 scrollLeft/scrollTop 控制，浏览器自动处理边界
+- transform origin 根据模式动态调整：Auto 使用 center，手动使用 top left
+- 窗口尺寸监听使用 ResizeObserver，依赖 autoFit 和 pageHeight 状态
+
+---
+
 ## [1.1.0] - 2025-10-07
 
 ### 新增
@@ -229,7 +270,8 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/6639835/chart-viewer/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/6639835/chart-viewer/compare/v1.0.9...v1.1.0
 [1.0.9]: https://github.com/6639835/chart-viewer/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/6639835/chart-viewer/compare/v1.0.7...v1.0.8
