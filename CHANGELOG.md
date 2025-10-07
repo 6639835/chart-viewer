@@ -17,6 +17,23 @@
 
 ---
 
+## [1.1.7] - 2025-10-07
+
+### 修复
+- **修复自动更新文件名不匹配问题**：解决 auto-updater 404 错误的根本原因
+  - 在所有平台（macOS、Windows、Linux）添加统一的 `artifactName` 配置
+  - 确保构建产物文件名与 `latest-mac.yml` 等配置文件中的引用完全一致
+  - 使用 `Chart.Viewer-${version}-${arch}.${ext}` 格式，避免空格导致的命名不一致
+  - 彻底解决 electron-builder 在不同阶段处理空格不一致的问题
+
+### 技术细节
+- macOS: `Chart.Viewer-1.1.7-arm64-mac.zip` 和 `Chart.Viewer-1.1.7-arm64.dmg`
+- Windows: `Chart.Viewer-1.1.7-x64.exe` 和 `Chart.Viewer-1.1.7-x64-portable.exe`
+- Linux: `Chart.Viewer-1.1.7-x64.AppImage` 和 `Chart.Viewer-1.1.7-x64.deb`
+- `latest-mac.yml`、`latest.yml`、`latest-linux.yml` 中的文件名引用与实际情况完全匹配
+
+---
+
 ## [1.1.6] - 2025-10-07
 
 ### 修复
@@ -435,7 +452,8 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.6...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.7...HEAD
+[1.1.7]: https://github.com/6639835/chart-viewer/compare/v1.1.6...v1.1.7
 [1.1.6]: https://github.com/6639835/chart-viewer/compare/v1.1.5...v1.1.6
 [1.1.5]: https://github.com/6639835/chart-viewer/compare/v1.1.4...v1.1.5
 [1.1.4]: https://github.com/6639835/chart-viewer/compare/v1.1.3...v1.1.4
