@@ -17,6 +17,47 @@
 
 ---
 
+## [1.1.5] - 2025-10-07
+
+### 修复
+- **GitHub Actions 发布流程最终修复**：确保自动更新功能完全可用
+  - 修改构建参数为 `--publish never`，生成更新文件但不自动上传
+  - 恢复 `release` job，统一创建 GitHub Release 并上传所有文件
+  - 避免 electron-builder 与 GitHub Actions 的上传冲突
+  - 确保 `latest-mac.yml`、`latest.yml` 等文件正确包含在 Release 中
+
+### 变更
+- **完善的构建发布流程**：
+  1. Build 阶段：使用 `--publish never` 生成所有文件（包括更新配置）
+  2. Upload Artifacts：上传所有构建产物到 GitHub Actions
+  3. Release 阶段：统一下载并发布到 GitHub Release
+- 所有平台（macOS、Windows、Linux）都遵循相同的流程
+
+### 技术细节
+- `--publish never` 确保 electron-builder 生成更新文件但不尝试上传
+- GitHub Actions 的 `release` job 使用 `softprops/action-gh-release` 创建 Release
+- 避免了多平台并行构建时的上传冲突问题
+
+---
+
+## [1.1.4] - 2025-10-07
+
+### 修复
+- **恢复 GitHub Actions Release Job**：修复 1.1.3 中缺少 release 步骤的问题
+  - 重新启用 `release` job 来创建 GitHub Release
+  - 修复条件判断语法，使用 GitHub Actions 原生表达式
+  - 同步更新 `pre-release.yml` 工作流
+
+### 变更
+- GitHub Actions 条件判断从 bash 脚本改为 workflow 表达式
+- 使用 `startsWith(github.ref, 'refs/tags/v')` 判断是否为 tag 推送
+
+### 已知问题
+- 此版本仍使用 `--publish always`，可能导致与手动 Release 冲突
+- 建议直接升级到 1.1.5
+
+---
+
 ## [1.1.3] - 2025-10-07
 
 ### 修复
@@ -373,7 +414,9 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.3...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.5...HEAD
+[1.1.5]: https://github.com/6639835/chart-viewer/compare/v1.1.4...v1.1.5
+[1.1.4]: https://github.com/6639835/chart-viewer/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/6639835/chart-viewer/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/6639835/chart-viewer/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/6639835/chart-viewer/compare/v1.1.0...v1.1.1
