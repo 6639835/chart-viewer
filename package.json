@@ -11,6 +11,14 @@
     "name": "Justin",
     "email": "epa6643@gmail.com"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/6639835/chart-viewer.git"
+  },
+  "homepage": "https://github.com/6639835/chart-viewer#readme",
+  "bugs": {
+    "url": "https://github.com/6639835/chart-viewer/issues"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

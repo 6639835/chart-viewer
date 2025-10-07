@@ -154,7 +154,7 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col m-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col m-4">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h2>
@@ -167,7 +167,7 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="p-6">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
@@ -311,6 +311,24 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
                       <li>Use absolute paths (e.g., <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">/Users/name/data/charts</code>)</li>
                     </ul>
                   </div>
+                </div>
+              </div>
+
+              {/* About Section */}
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">About</h3>
+                <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                  <p>Chart Viewer - EFB v1.0.9</p>
+                  <p>© 2025 Justin. All rights reserved.</p>
+                  <p>Licensed under MIT License</p>
+                  <a 
+                    href="https://github.com/6639835/chart-viewer" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 dark:text-blue-400 hover:underline inline-block"
+                  >
+                    GitHub Repository →
+                  </a>
                 </div>
               </div>
 

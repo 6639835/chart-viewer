@@ -118,7 +118,7 @@ git push --tags
 
 **Download Options:**
 - Artifacts available in GitHub Actions (7-14 days)
-- Releases published at: `https://github.com/YOUR_USERNAME/chart-viewer/releases`
+- Releases published at: `https://github.com/6639835/chart-viewer/releases`
 
 For detailed release documentation, see [`.github/workflows/README.md`](.github/workflows/README.md).
 
@@ -203,7 +203,17 @@ charts/
 - **PapaParse**: CSV parsing
 - **Lucide React**: Icon library
 
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
 ## License
 
-Private Project
+MIT License - see [LICENSE](LICENSE) file for details
+
+Copyright (c) 2025 Justin
+
+---
+
+Made with ❤️ for aviation enthusiasts
 

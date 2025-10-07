@@ -17,6 +17,27 @@
 
 ---
 
+## [1.1.0] - 2025-10-07
+
+### 新增
+- **版权信息和 GitHub 链接**：在多个位置添加版权声明和项目链接
+  - package.json 中添加 repository、homepage 和 bugs 字段
+  - README.md 底部添加完整的版权信息、GitHub 链接和作者信息
+  - Settings 模态框中添加"关于"部分，显示版本号、版权声明和 GitHub 链接
+  - 主页面空状态下显示版权信息和 GitHub 仓库链接
+
+### 修复
+- **Settings 页面滚动问题**：移除 Settings 模态框的滚动功能
+  - 移除最大高度限制（max-h-[90vh]）
+  - 移除垂直滚动（overflow-y-auto）
+  - 模态框现在根据内容自动调整大小，不会出现滚动条
+
+### 变更
+- 更新 MIT License 版权年份为 2025
+- 优化 Settings 模态框布局，改善用户体验
+
+---
+
 ## [1.0.9] - 2025-10-06
 
 ### 新增
@@ -208,7 +229,8 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.0.9...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/6639835/chart-viewer/compare/v1.0.9...v1.1.0
 [1.0.9]: https://github.com/6639835/chart-viewer/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/6639835/chart-viewer/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/6639835/chart-viewer/compare/v1.0.6...v1.0.7
