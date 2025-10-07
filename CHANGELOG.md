@@ -17,6 +17,50 @@
 
 ---
 
+## [1.1.3] - 2025-10-07
+
+### 修复
+- **GitHub Actions 自动更新支持**：修复 CI/CD 工作流以支持应用自动更新功能
+  - 构建时添加 `--publish always` 参数，自动发布到 GitHub Release
+  - 确保生成自动更新所需的 `latest-mac.yml`、`latest.yml` 等配置文件
+  - 确保生成 `.blockmap` 文件用于增量更新
+  - electron-builder 现在自动创建 GitHub Release 并上传所有文件
+  - 移除手动创建 Release 的步骤，避免重复和冲突
+
+### 变更
+- **GitHub Actions 工作流优化** (`.github/workflows/build.yml`)
+  - Tag 推送时自动使用 `--publish always` 发布到 GitHub Release
+  - 非 Tag 构建仍然只构建不发布（用于 PR 测试）
+  - 上传 artifacts 时包含 `.blockmap` 和 `.yml` 文件
+  - 禁用手动 Release job，改用 electron-builder 自动发布
+  - Windows 构建步骤添加 `shell: bash` 确保跨平台兼容性
+- **预发布工作流优化** (`.github/workflows/pre-release.yml`)
+  - 预发布版本（alpha/beta/rc）也支持自动更新
+  - 构建时自动发布到 GitHub Pre-release
+  - 包含所有自动更新所需文件
+
+### 技术细节
+- **构建发布流程变化**：
+  - 之前：构建 → 上传 artifacts → 手动创建 Release → 上传文件
+  - 现在：构建 → electron-builder 自动发布（一步完成）
+- **生成的文件**：
+  - macOS: `.dmg`, `.zip`, `.zip.blockmap`, `latest-mac.yml`
+  - Windows: `.exe`, `.exe.blockmap`, `latest.yml`
+  - Linux: `.AppImage`, `.deb`, `latest-linux.yml`
+- **自动更新检测流程**：
+  1. 应用读取 GitHub Release 中的 `latest-mac.yml`
+  2. 对比版本号，发现新版本
+  3. 下载 `.zip` 文件（使用 `.blockmap` 实现增量下载）
+  4. 验证签名和 SHA-512 哈希
+  5. 安装新版本
+
+### 重要提示
+- 此版本修复了 1.1.2 中自动更新功能无法正常工作的问题
+- 如果已安装 1.1.2，需要手动下载 1.1.3 安装
+- 从 1.1.3 开始，所有后续版本都可以自动更新
+
+---
+
 ## [1.1.2] - 2025-10-07
 
 ### 新增
@@ -329,7 +373,8 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.3...HEAD
+[1.1.3]: https://github.com/6639835/chart-viewer/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/6639835/chart-viewer/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/6639835/chart-viewer/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/6639835/chart-viewer/compare/v1.0.9...v1.1.0

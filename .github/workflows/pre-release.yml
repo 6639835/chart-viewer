@@ -62,19 +62,20 @@ jobs:
 
       - name: Build Electron app (macOS)
         if: matrix.os == 'macos-latest'
-        run: npm run electron:build:mac
+        run: npm run electron:build:mac -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Electron app (Windows)
         if: matrix.os == 'windows-latest'
-        run: npm run electron:build:win
+        run: npm run electron:build:win -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
 
       - name: Build Electron app (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: npm run electron:build:linux
+        run: npm run electron:build:linux -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -86,6 +87,8 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.zip
+            dist/*.blockmap
+            dist/*.yml
           retention-days: 14
 
       - name: Upload artifacts (Windows)
@@ -95,6 +98,8 @@ jobs:
           name: chart-viewer-${{ matrix.artifact_name }}-prerelease
           path: |
             dist/*.exe
+            dist/*.blockmap
+            dist/*.yml
           retention-days: 14
 
       - name: Upload artifacts (Linux)
@@ -105,29 +110,34 @@ jobs:
           path: |
             dist/*.AppImage
             dist/*.deb
+            dist/*.blockmap
+            dist/*.yml
           retention-days: 14
 
-  pre-release:
-    needs: build
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Display structure of downloaded files
-        run: ls -R artifacts
-
-      - name: Create Pre-release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            artifacts/**/*
-          draft: false
-          prerelease: true
-          generate_release_notes: true
-          name: Pre-release ${{ github.ref_name }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # Pre-release job is disabled because electron-builder with --publish always
+  # automatically creates GitHub Pre-release and uploads all necessary files
+  
+  # pre-release:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   
+  #   steps:
+  #     - name: Download all artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         path: artifacts
+  # 
+  #     - name: Display structure of downloaded files
+  #       run: ls -R artifacts
+  # 
+  #     - name: Create Pre-release
+  #       uses: softprops/action-gh-release@v1
+  #       with:
+  #         files: |
+  #           artifacts/**/*
+  #         draft: false
+  #         prerelease: true
+  #         generate_release_notes: true
+  #         name: Pre-release ${{ github.ref_name }}
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
