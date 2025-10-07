@@ -58,7 +58,8 @@
         "zip"
       ],
       "icon": "public/icon.png",
-      "artifactName": "Chart.Viewer-${version}-${arch}.${ext}"
+      "artifactName": "Chart.Viewer-${version}-${arch}.${ext}",
+      "identity": null
     },
     "win": {
       "target": [

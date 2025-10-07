@@ -17,6 +17,29 @@
 
 ---
 
+## [1.1.8] - 2025-10-07
+
+### 变更
+- **禁用 macOS 代码签名**：为 macOS 构建添加 `identity: null` 配置
+  - 生成未签名的安装包，无需 Apple Developer 证书
+  - 适用于个人使用和内部分发场景
+  - 用户首次安装需在"系统设置 > 隐私与安全性"中手动允许
+
+### 已知限制
+- **自动更新功能受限**：由于 macOS Gatekeeper 安全机制，未签名应用的自动更新会被系统阻止
+  - 应用仍可检测到新版本并提示用户
+  - 用户需手动下载并安装更新
+  - 每次更新后可能需要在"隐私与安全性"中重新允许运行
+  - 若需完整的自动更新功能，需使用 Apple Developer ID Application Certificate 签名
+
+### 技术细节
+- macOS 配置添加 `"identity": null`，跳过代码签名步骤
+- Windows 和 Linux 平台不受影响，可正常构建和更新
+- iOS 证书（.mobileprovision、.p12）不适用于 macOS 桌面应用
+- 建议未来获取 Apple Developer Program ($99/年) 以启用完整自动更新
+
+---
+
 ## [1.1.7] - 2025-10-07
 
 ### 修复
@@ -452,7 +475,8 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.7...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.8...HEAD
+[1.1.8]: https://github.com/6639835/chart-viewer/compare/v1.1.7...v1.1.8
 [1.1.7]: https://github.com/6639835/chart-viewer/compare/v1.1.6...v1.1.7
 [1.1.6]: https://github.com/6639835/chart-viewer/compare/v1.1.5...v1.1.6
 [1.1.5]: https://github.com/6639835/chart-viewer/compare/v1.1.4...v1.1.5
