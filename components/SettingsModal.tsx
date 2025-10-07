@@ -25,6 +25,7 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [isElectron, setIsElectron] = useState(false);
+  const [version, setVersion] = useState<string>('');
   
   // Directory browser state
   const [browsing, setBrowsing] = useState<ConfigField | null>(null);
@@ -35,6 +36,7 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
     if (isOpen) {
       loadConfig();
       checkElectron();
+      loadVersion();
     }
   }, [isOpen]);
 
@@ -42,6 +44,18 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
     if (typeof window !== 'undefined' && window.electronAPI) {
       const result = await window.electronAPI.isElectron();
       setIsElectron(result);
+    }
+  };
+
+  const loadVersion = async () => {
+    try {
+      const response = await fetch('/api/version');
+      const data = await response.json();
+      if (data.success) {
+        setVersion(data.version);
+      }
+    } catch (err) {
+      console.error('Error loading version:', err);
     }
   };
 
@@ -318,7 +332,7 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
               <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                 <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">About</h3>
                 <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                  <p>Chart Viewer - EFB v1.0.9</p>
+                  <p>Chart Viewer - EFB {version ? `v${version}` : 'v1.0.0'}</p>
                   <p>© 2025 Justin. All rights reserved.</p>
                   <p>Licensed under MIT License</p>
                   <a 

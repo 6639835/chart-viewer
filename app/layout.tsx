@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import UpdateNotification from '@/components/UpdateNotification';
 
 export const metadata: Metadata = {
   title: 'Chart Viewer - EFB',
@@ -17,6 +18,7 @@ export default function RootLayout({
       <body>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           {children}
+          <UpdateNotification />
         </ThemeProvider>
       </body>
     </html>

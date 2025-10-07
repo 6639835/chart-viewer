@@ -17,6 +17,65 @@
 
 ---
 
+## [1.1.2] - 2025-10-07
+
+### 新增
+- **应用自动更新功能**：通过 GitHub Release 实现自动更新机制
+  - 应用启动时自动检查 GitHub Release 是否有新版本
+  - 发现新版本时显示更新通知，支持一键下载
+  - 下载完成后提示重启安装，无需手动操作
+  - 更新通知 UI 显示版本号、发布说明和下载进度
+  - 支持关闭更新通知，不影响正常使用
+- **UpdateNotification 组件**：全新的更新通知 UI 组件
+  - 显示在屏幕右下角，不遮挡主要内容
+  - 实时显示下载进度条（百分比）
+  - 支持亮色/暗色主题自动适配
+  - 完整的错误处理和提示信息
+- **更新相关 API**：为渲染进程暴露完整的更新控制接口
+  - `checkForUpdates()`: 手动检查更新
+  - `downloadUpdate()`: 下载更新
+  - `quitAndInstall()`: 退出并安装更新
+  - 事件监听器：`onUpdateAvailable`、`onDownloadProgress`、`onUpdateDownloaded` 等
+
+### 变更
+- **package.json 构建配置**：添加 GitHub 发布配置
+  - 配置 `publish` 字段指向 GitHub Repository
+  - electron-builder 自动将构建产物上传到 GitHub Release
+- **electron/main.js**：集成 electron-updater 模块
+  - 引入 `electron-updater` 自动更新器
+  - 添加 `setupAutoUpdater()` 函数处理更新逻辑
+  - 应用启动 5 秒后自动检查更新（生产环境）
+  - 所有更新事件通过 IPC 发送到渲染进程
+  - 新增 3 个 IPC 处理器：`updater-check-for-updates`、`updater-download-update`、`updater-quit-and-install`
+- **electron/preload.js**：扩展 electronAPI 接口
+  - 添加 `updater` 对象，包含更新相关的所有方法
+  - 支持单向和双向 IPC 通信
+  - 返回清理函数用于移除事件监听器
+- **types/electron.d.ts**：新增 TypeScript 类型定义
+  - `UpdateInfo` 接口：定义更新信息结构
+  - `ProgressInfo` 接口：定义下载进度数据结构
+  - 扩展 `ElectronAPI` 接口包含 updater 方法
+- **app/layout.tsx**：在根布局中引入 UpdateNotification 组件
+  - 全局可用的更新通知
+  - 仅在 Electron 环境中激活
+
+### 技术细节
+- 使用 `electron-updater` 库实现自动更新（基于 Squirrel）
+- 更新源配置为 GitHub Release (provider: github)
+- `autoDownload` 设为 false，由用户手动触发下载
+- `autoInstallOnAppQuit` 设为 true，退出时自动安装
+- 开发环境禁用自动更新功能，避免干扰开发
+- 更新文件（latest-mac.yml）由 electron-builder 自动生成
+- 支持增量更新，仅下载变更部分（通过 blockmap）
+- 完整的错误处理和日志记录
+
+### 安全性
+- electron-updater 自动验证下载文件的签名和 SHA-512 哈希
+- 仅通过 HTTPS 从 GitHub 下载更新文件
+- 签名验证确保更新文件未被篡改
+
+---
+
 ## [1.1.1] - 2025-10-07
 
 ### 新增
@@ -270,7 +329,8 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/6639835/chart-viewer/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/6639835/chart-viewer/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/6639835/chart-viewer/compare/v1.0.9...v1.1.0
 [1.0.9]: https://github.com/6639835/chart-viewer/compare/v1.0.8...v1.0.9
