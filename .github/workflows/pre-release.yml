@@ -87,7 +87,7 @@ jobs:
             dist/*.dmg
             dist/*.zip
             dist/*.blockmap
-            dist/*.yml
+            dist/latest*.yml
           retention-days: 14
 
       - name: Upload artifacts (Windows)
@@ -98,7 +98,7 @@ jobs:
           path: |
             dist/*.exe
             dist/*.blockmap
-            dist/*.yml
+            dist/latest*.yml
           retention-days: 14
 
       - name: Upload artifacts (Linux)
@@ -110,7 +110,7 @@ jobs:
             dist/*.AppImage
             dist/*.deb
             dist/*.blockmap
-            dist/*.yml
+            dist/latest*.yml
           retention-days: 14
 
   pre-release:

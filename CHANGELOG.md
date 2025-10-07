@@ -17,6 +17,27 @@
 
 ---
 
+## [1.1.6] - 2025-10-07
+
+### 修复
+- **修复 GitHub Release 文件上传冲突**：解决 builder-debug.yml 重复上传导致的 404 错误
+  - 将 artifacts 上传路径从 `dist/*.yml` 改为 `dist/latest*.yml`
+  - 只上传自动更新所需的配置文件（latest-mac.yml、latest.yml、latest-linux.yml）
+  - 排除调试文件 builder-debug.yml，避免多平台构建时的文件名冲突
+  - 确保 Release 创建过程完全成功，无错误
+
+### 变更
+- 优化 artifacts 上传策略，只包含必要的更新配置文件
+- 同步更新 build.yml 和 pre-release.yml 工作流
+
+### 技术细节
+- `builder-debug.yml` 是 electron-builder 的调试信息文件
+- 三个平台（macOS、Windows、Linux）都生成同名的 builder-debug.yml
+- GitHub Release 不允许上传同名文件，导致后续平台上传失败
+- 使用 `dist/latest*.yml` 模式只匹配实际需要的更新配置文件
+
+---
+
 ## [1.1.5] - 2025-10-07
 
 ### 修复
@@ -414,7 +435,8 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.5...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.6...HEAD
+[1.1.6]: https://github.com/6639835/chart-viewer/compare/v1.1.5...v1.1.6
 [1.1.5]: https://github.com/6639835/chart-viewer/compare/v1.1.4...v1.1.5
 [1.1.4]: https://github.com/6639835/chart-viewer/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/6639835/chart-viewer/compare/v1.1.2...v1.1.3
