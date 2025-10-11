@@ -17,6 +17,34 @@
 
 ---
 
+## [1.1.10] - 2025-10-11
+
+### 修复
+- **修复 GitHub Actions 缓存导致的 SHA512 校验失败问题**：一劳永逸解决自动更新 SHA512 不匹配
+  - 更新 Next.js 构建缓存 key，包含 `package.json` 和 `public/**` 文件
+  - 确保任何配置或资源文件变化时都会重新构建
+  - 避免使用过期缓存导致构建产物与 `latest.yml` 中的 SHA512 不匹配
+  - 修复 Windows 端 "sha512 checksum mismatch" 错误
+
+### 技术细节
+- **问题根源**：GitHub Actions 的 Next.js 缓存 key 只基于代码文件，不包含：
+  - `package.json` 配置变化（如修改 icon 路径）
+  - `public/` 目录文件（如添加 icon.ico, icon.icns）
+  - 导致添加图标后，构建使用旧缓存，但生成的 exe SHA512 不同
+- **解决方案**：缓存 key 现在包含：
+  - `package-lock.json` - 依赖变化
+  - `package.json` - 配置变化
+  - `public/**` - 资源文件变化
+  - 代码文件（`.js`, `.jsx`, `.ts`, `.tsx`）
+- 同时更新 `build.yml` 和 `pre-release.yml` 工作流
+
+### 重要说明
+- 此版本彻底解决跨平台构建的 SHA512 一致性问题
+- 建议所有用户更新到此版本，确保后续自动更新正常工作
+- macOS、Windows、Linux 三个平台的更新文件现在保证来自同一次构建
+
+---
+
 ## [1.1.9] - 2025-10-11
 
 ### 修复
@@ -510,7 +538,8 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.9...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.10...HEAD
+[1.1.10]: https://github.com/6639835/chart-viewer/compare/v1.1.9...v1.1.10
 [1.1.9]: https://github.com/6639835/chart-viewer/compare/v1.1.8...v1.1.9
 [1.1.8]: https://github.com/6639835/chart-viewer/compare/v1.1.7...v1.1.8
 [1.1.7]: https://github.com/6639835/chart-viewer/compare/v1.1.6...v1.1.7
