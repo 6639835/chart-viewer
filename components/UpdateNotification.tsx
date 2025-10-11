@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Download, X, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Download, X, RefreshCw, AlertCircle, CheckCircle2, ExternalLink } from 'lucide-react';
 import type { UpdateInfo, ProgressInfo } from '@/types/electron';
 
 export default function UpdateNotification() {
@@ -12,8 +12,12 @@ export default function UpdateNotification() {
   const [downloaded, setDownloaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const [isMac, setIsMac] = useState(false);
 
   useEffect(() => {
+    // Detect platform
+    setIsMac(navigator.platform.toLowerCase().includes('mac'));
+    
     // Only run in Electron environment
     if (typeof window === 'undefined' || !window.electronAPI?.updater) {
       return;
@@ -96,6 +100,13 @@ export default function UpdateNotification() {
     setError(null);
   };
 
+  const handleOpenRelease = () => {
+    const releaseUrl = `https://github.com/6639835/chart-viewer/releases/latest`;
+    if (typeof window !== 'undefined') {
+      window.open(releaseUrl, '_blank');
+    }
+  };
+
   // Don't show anything if dismissed or no update info
   if (dismissed || (!updateInfo && !error)) {
     return null;
@@ -158,26 +169,43 @@ export default function UpdateNotification() {
                 )}
               </p>
 
-              {downloading ? (
-                <div>
-                  <div className="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-2 overflow-hidden">
-                    <div
-                      className="bg-blue-500 h-2.5 rounded-full transition-all duration-300 ease-out"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                    下载中... {progress}%
+              {isMac ? (
+                /* macOS: 手动下载 */
+                <>
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mb-3 p-2 bg-amber-50 dark:bg-amber-900/20 rounded border border-amber-200 dark:border-amber-800">
+                    由于 macOS 安全限制，需要手动下载并安装更新
                   </p>
-                </div>
+                  <button
+                    onClick={handleOpenRelease}
+                    className="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    前往下载页面
+                  </button>
+                </>
               ) : (
-                <button
-                  onClick={handleDownload}
-                  className="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  下载更新
-                </button>
+                /* Windows/Linux: 自动更新 */
+                downloading ? (
+                  <div>
+                    <div className="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-2 overflow-hidden">
+                      <div
+                        className="bg-blue-500 h-2.5 rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                      下载中... {progress}%
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleDownload}
+                    className="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    下载更新
+                  </button>
+                )
               )}
             </>
           )}

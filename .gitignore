@@ -43,8 +43,9 @@ config.json
 /charts
 /csv
 
-# generated icons (keep source SVG in git)
-public/icon*.png
-public/icon*.icns
-public/icon*.ico
+# generated icons (keep source SVG and main icons in git)
+public/icon-*.png
+# Don't ignore icon.ico and icon.icns (needed for builds)
+!public/icon.ico
+!public/icon.icns
 

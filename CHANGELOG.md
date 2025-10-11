@@ -17,7 +17,36 @@
 
 ---
 
-## [1.1.8] - 2025-10-07
+## [1.1.9] - 2025-10-11
+
+### 修复
+- **修复 Windows 应用图标缺失问题**：生成并配置 Windows `.ico` 格式图标
+  - Windows 版本现在正确显示应用图标
+  - 任务栏、开始菜单、桌面快捷方式都会显示图标
+  - macOS 版本使用 `.icns` 格式获得最佳显示效果
+
+### 新增
+- **增强图标生成脚本**：自动生成所有平台所需的图标格式
+  - Windows: `.ico` 格式（包含 7 种尺寸：16, 24, 32, 48, 64, 128, 256）
+  - macOS: `.icns` 格式（包含 10 种尺寸和 Retina 版本）
+  - 自动从 SVG 源文件生成所有格式
+  - 添加 `png-to-ico` 依赖用于 Windows 图标生成
+
+### 变更
+- 更新 `.gitignore` 配置，允许提交 `icon.ico` 和 `icon.icns` 文件
+- `package.json` 构建配置更新图标路径
+  - macOS: `public/icon.icns`
+  - Windows: `public/icon.ico`
+  - Linux: `public/icon.png`
+
+### 技术细节
+- Windows `.ico` 包含多种尺寸以适应不同场景（系统托盘、窗口、快捷方式等）
+- macOS `.icns` 包含标准和 Retina (@2x) 版本
+- 图标生成脚本支持跨平台运行（macOS 上可生成 .icns，其他平台跳过）
+
+---
+
+## [1.1.8] - 2025-10-11
 
 ### 变更
 - **禁用 macOS 代码签名**：为 macOS 构建添加 `identity: null` 配置
@@ -25,18 +54,24 @@
   - 适用于个人使用和内部分发场景
   - 用户首次安装需在"系统设置 > 隐私与安全性"中手动允许
 
-### 已知限制
-- **自动更新功能受限**：由于 macOS Gatekeeper 安全机制，未签名应用的自动更新会被系统阻止
-  - 应用仍可检测到新版本并提示用户
-  - 用户需手动下载并安装更新
-  - 每次更新后可能需要在"隐私与安全性"中重新允许运行
-  - 若需完整的自动更新功能，需使用 Apple Developer ID Application Certificate 签名
+### 新增
+- **平台检测更新提示**：更新通知组件现在会检测操作系统平台
+  - macOS: 显示"前往下载页面"按钮，引导用户到 GitHub Release 手动下载
+  - Windows/Linux: 保持原有的自动下载安装功能
+  - macOS 用户会看到安全限制提示信息
+
+### 修复
+- **解决 macOS 自动更新失败问题**：避免 "code signature validation failed" 错误
+  - macOS 用户不再尝试自动下载安装（会被系统阻止）
+  - 改为引导用户手动下载，避免混淆和错误提示
+  - Windows 和 Linux 用户不受影响，自动更新正常工作
 
 ### 技术细节
 - macOS 配置添加 `"identity": null`，跳过代码签名步骤
-- Windows 和 Linux 平台不受影响，可正常构建和更新
+- 使用 `navigator.platform` 检测操作系统
+- Windows 和 Linux 平台保持完整的自动更新功能
 - iOS 证书（.mobileprovision、.p12）不适用于 macOS 桌面应用
-- 建议未来获取 Apple Developer Program ($99/年) 以启用完整自动更新
+- 建议未来获取 Apple Developer Program ($99/年) 以启用 macOS 完整自动更新
 
 ---
 
@@ -475,7 +510,8 @@
 - **修复**: Bug 修复
 - **安全**: 安全相关的更改
 
-[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.8...HEAD
+[Unreleased]: https://github.com/6639835/chart-viewer/compare/v1.1.9...HEAD
+[1.1.9]: https://github.com/6639835/chart-viewer/compare/v1.1.8...v1.1.9
 [1.1.8]: https://github.com/6639835/chart-viewer/compare/v1.1.7...v1.1.8
 [1.1.7]: https://github.com/6639835/chart-viewer/compare/v1.1.6...v1.1.7
 [1.1.6]: https://github.com/6639835/chart-viewer/compare/v1.1.5...v1.1.6
