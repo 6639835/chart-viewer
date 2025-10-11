@@ -59,7 +59,12 @@
       ],
       "icon": "public/icon.icns",
       "artifactName": "Chart.Viewer-${version}-${arch}.${ext}",
-      "identity": null
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "sign": false
     },
     "win": {
       "target": [

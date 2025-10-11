@@ -35,6 +35,16 @@ function setupAutoUpdater() {
   // Don't automatically download updates
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
+  
+  // Add detailed logging for debugging
+  console.log('Auto-updater configured:', {
+    provider: 'github',
+    owner: '6639835',
+    repo: 'chart-viewer',
+    currentVersion: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch
+  });
 
   // Update event listeners
   autoUpdater.on('checking-for-update', () => {
@@ -73,9 +83,25 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('error', (err) => {
-    console.error('Auto-updater error:', err);
+    console.error('Auto-updater error:', {
+      message: err.message,
+      stack: err.stack,
+      name: err.name
+    });
+    
+    let errorMessage = err.message || String(err);
+    
+    // Provide more helpful error message for common issues
+    if (errorMessage.includes('sha512 checksum mismatch')) {
+      errorMessage = 'Update verification failed. The downloaded update file does not match the expected signature. This may be due to a corrupted download or release issue. Please try again later or download manually from GitHub.';
+      console.error('SHA512 mismatch detected. This usually indicates:');
+      console.error('1. Network issue causing corrupted download');
+      console.error('2. Release files were modified after latest.yml was generated');
+      console.error('3. Different builds were uploaded (not from same CI run)');
+    }
+    
     if (mainWindow) {
-      mainWindow.webContents.send('updater-error', err.message || String(err));
+      mainWindow.webContents.send('updater-error', errorMessage);
     }
   });
 
