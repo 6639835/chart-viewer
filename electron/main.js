@@ -32,9 +32,8 @@ function setupAutoUpdater() {
     repo: 'chart-viewer'
   });
 
-  // Don't automatically download updates
+  // Don't automatically download updates - users will download manually from GitHub
   autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
   
   // Add detailed logging for debugging
   console.log('Auto-updater configured:', {
@@ -68,20 +67,6 @@ function setupAutoUpdater() {
     }
   });
 
-  autoUpdater.on('download-progress', (progressObj) => {
-    console.log(`Download progress: ${Math.round(progressObj.percent)}%`);
-    if (mainWindow) {
-      mainWindow.webContents.send('updater-download-progress', progressObj);
-    }
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log('Update downloaded:', info.version);
-    if (mainWindow) {
-      mainWindow.webContents.send('updater-update-downloaded', info);
-    }
-  });
-
   autoUpdater.on('error', (err) => {
     console.error('Auto-updater error:', {
       message: err.message,
@@ -90,15 +75,6 @@ function setupAutoUpdater() {
     });
     
     let errorMessage = err.message || String(err);
-    
-    // Provide more helpful error message for common issues
-    if (errorMessage.includes('sha512 checksum mismatch')) {
-      errorMessage = 'Update verification failed. The downloaded update file does not match the expected signature. This may be due to a corrupted download or release issue. Please try again later or download manually from GitHub.';
-      console.error('SHA512 mismatch detected. This usually indicates:');
-      console.error('1. Network issue causing corrupted download');
-      console.error('2. Release files were modified after latest.yml was generated');
-      console.error('3. Different builds were uploaded (not from same CI run)');
-    }
     
     if (mainWindow) {
       mainWindow.webContents.send('updater-error', errorMessage);
@@ -337,32 +313,6 @@ ipcMain.handle('updater-check-for-updates', async () => {
   } catch (error) {
     console.error('Error checking for updates:', error);
     return { available: false, error: error.message };
-  }
-});
-
-ipcMain.handle('updater-download-update', () => {
-  if (isDev) {
-    return { success: false, message: 'Updates disabled in development mode' };
-  }
-  try {
-    autoUpdater.downloadUpdate();
-    return { success: true };
-  } catch (error) {
-    console.error('Error downloading update:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-ipcMain.handle('updater-quit-and-install', () => {
-  if (isDev) {
-    return { success: false, message: 'Updates disabled in development mode' };
-  }
-  try {
-    autoUpdater.quitAndInstall(false, true);
-    return { success: true };
-  } catch (error) {
-    console.error('Error installing update:', error);
-    return { success: false, error: error.message };
   }
 });
 

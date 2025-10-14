@@ -21,36 +21,49 @@
 
 ---
 
+## [1.1.12] - 2025-10-14
+
+### 变更
+- **更新机制改为手动下载**：将自动更新功能改为引导用户手动下载更新
+  - 所有平台（macOS、Windows、Linux）统一使用手动下载方式
+  - 检测到新版本时显示通知，提供"前往 GitHub 下载更新"按钮
+  - 点击按钮直接跳转到 GitHub Release 最新版本页面
+  - 简化更新流程，避免自动下载可能遇到的各种问题（如校验失败、网络问题等）
+- 简化 electron-updater 配置，仅保留版本检测功能
+
+### 移除
+- 移除自动下载更新功能（`downloadUpdate` IPC 方法和 `updater-download-update` IPC 处理器）
+- 移除自动安装更新功能（`quitAndInstall` IPC 方法和 `updater-quit-and-install` IPC 处理器）
+- 移除下载进度相关代码（`onDownloadProgress` 事件监听器和 UI 进度条）
+- 移除更新已下载状态的 UI 和逻辑（`onUpdateDownloaded` 事件监听器）
+- `UpdateNotification.tsx` 移除 `downloading`、`downloaded`、`progress`、`isMac` 状态
+- `electron/main.js` 移除 `download-progress` 和 `update-downloaded` 事件监听
+- `electron/preload.js` 移除 `downloadUpdate()` 和 `quitAndInstall()` 方法暴露
+- `types/electron.d.ts` 移除 `ProgressInfo` 接口定义，更新 `ElectronAPI.updater` 接口
+
+---
+
 ## [1.1.11] - 2025-10-11
 
 ### 修复
-- **彻底修复 SHA512 checksum mismatch 自动更新错误**：
-  - 根据 [Kilian Valkhof 的 Electron 公证指南](https://kilianvalkhof.com/2019/electron/notarizing-your-electron-application/) 和 [electron-builder issue #7724](https://github.com/electron-userland/electron-builder/issues/7724)，实施了完整的修复方案
-  - 禁用 DMG 签名（`"sign": false`），未签名的 DMG 可以包含已公证的 .app 而不触发 Gatekeeper 错误
-  - 添加 `hardenedRuntime: false` 和 `gatekeeperAssess: false` 配置，避免签名相关的校验冲突
-  - 移除 Next.js 构建缓存，确保每次构建都是全新的，避免不同平台之间的缓存污染
-  - 在构建前清理所有旧文件（.next、dist、out 目录），确保构建环境一致性
-  - 改进错误处理和日志记录，当出现 SHA512 不匹配时提供详细的诊断信息和解决建议
+- **彻底修复 SHA512 checksum mismatch 自动更新错误**
+- 修复 DMG 签名导致的 electron-updater 校验失败问题（禁用 DMG 签名，设置 `"sign": false`）
+- 修复 Next.js 构建缓存在不同平台间共享导致的 SHA512 不一致（完全禁用构建缓存）
+- 修复跨平台构建时 latest-*.yml 文件不匹配问题（构建前清理所有临时文件）
+- 根据 [Kilian Valkhof 的 Electron 公证指南](https://kilianvalkhof.com/2019/electron/notarizing-your-electron-application/) 和 [electron-builder issue #7724](https://github.com/electron-userland/electron-builder/issues/7724) 实施完整修复方案
 
 ### 变更
 - 优化 GitHub Actions 构建流程：
   - 移除 Next.js 构建缓存策略，避免跨平台缓存导致的文件不一致
-  - 添加构建前清理步骤，确保每次都是干净的构建环境
+  - 添加构建前清理步骤（.next、dist、out 目录），确保每次都是干净的构建环境
   - 同时更新 `build.yml` 和 `pre-release.yml` 工作流
+- 优化 macOS 构建配置：
+  - 添加 `hardenedRuntime: false` 和 `gatekeeperAssess: false` 配置
+  - 未签名的 DMG 可以包含已公证的 .app 而不触发 Gatekeeper 错误
 - electron-updater 日志改进：
   - 添加详细的配置信息输出（provider、版本号、平台、架构）
   - SHA512 错误时提供更友好的错误消息和可能原因分析
   - 建议用户在更新失败时手动从 GitHub 下载
-
-### 技术说明
-- **问题根源**：
-  1. DMG 被签名后，electron-updater 会验证签名，但未公证的签名会导致校验失败
-  2. Next.js 构建缓存在不同平台间共享时，可能包含平台特定的内容，导致 SHA512 不一致
-  3. 三个平台的构建如果不是完全相同的源代码和环境，生成的 latest-*.yml 文件会不匹配
-- **解决方案**：
-  1. 不签名 DMG（只打包未签名的 .app），避免 Gatekeeper 问题
-  2. 完全禁用构建缓存，牺牲构建速度换取一致性
-  3. 每次构建前清理所有临时文件，确保干净环境
 
 ---
 
@@ -526,7 +539,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.1.11...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.1.12...HEAD
+[1.1.12]: https://github.com/6639835/chart-viewer/compare/v1.1.11...v1.1.12
 [1.1.11]: https://github.com/6639835/chart-viewer/compare/v1.1.10...v1.1.11
 [1.1.10]: https://github.com/6639835/chart-viewer/compare/v1.1.9...v1.1.10
 [1.1.9]: https://github.com/6639835/chart-viewer/compare/v1.1.8...v1.1.9
