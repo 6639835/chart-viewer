@@ -11,7 +11,9 @@
 /out/
 
 # production
-/build
+/build/*
+# But keep code signing entitlements
+!/build/entitlements.mac.plist
 /dist
 
 # electron builder
@@ -20,6 +22,9 @@
 # misc
 .DS_Store
 *.pem
+*.p12
+*.cer
+*.certSigningRequest
 
 # debug
 npm-debug.log*

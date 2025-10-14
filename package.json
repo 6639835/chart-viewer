@@ -59,12 +59,13 @@
       ],
       "icon": "public/icon.icns",
       "artifactName": "Chart.Viewer-${version}-${arch}.${ext}",
-      "identity": null,
-      "hardenedRuntime": false,
-      "gatekeeperAssess": false
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
-      "sign": false
+      "sign": true
     },
     "win": {
       "target": [

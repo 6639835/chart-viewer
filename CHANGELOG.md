@@ -21,6 +21,38 @@
 
 ---
 
+## [1.1.14] - 2025-10-14
+
+### 新增
+- **macOS 代码签名支持**：为 macOS 应用添加完整的代码签名功能
+  - 支持使用自签名 .p12 证书对应用进行签名
+  - GitHub Actions 自动签名流程，自动导入证书并签名应用
+  - 签名后的应用不会再报"文件已损坏"错误
+  - 添加 `build/entitlements.mac.plist` 代码签名权限配置文件
+  - 支持本地手动签名和 CI/CD 自动签名两种方式
+
+### 变更
+- 优化 macOS 构建配置：
+  - 启用 `hardenedRuntime: true` 增强安全性
+  - 启用 `dmg.sign: true` 对 DMG 文件进行签名
+  - 配置 entitlements 文件路径
+  - 移除 `identity: null` 配置，支持证书签名
+- 更新 GitHub Actions 工作流（`build.yml` 和 `pre-release.yml`）：
+  - 添加证书导入和钥匙串配置步骤
+  - 通过 GitHub Secrets 安全管理证书和密码
+  - 构建时自动使用证书进行签名（CSC_LINK 和 CSC_KEY_PASSWORD）
+  - 支持无证书构建（未配置 Secrets 时自动跳过签名）
+- 更新 `.gitignore` 配置：
+  - 保护 `.p12`、`.cer`、`.certSigningRequest` 等证书文件不被提交
+  - 允许 `build/entitlements.mac.plist` 配置文件提交到仓库
+
+### 安全
+- 证书文件通过 `.gitignore` 保护，不会意外提交到版本控制
+- GitHub Secrets 安全存储证书 Base64 和密码
+- 钥匙串操作使用临时构建钥匙串，不影响系统钥匙串
+
+---
+
 ## [1.1.13] - 2025-10-14
 
 ### 新增
@@ -566,7 +598,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.1.13...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.1.14...HEAD
+[1.1.14]: https://github.com/6639835/chart-viewer/compare/v1.1.13...v1.1.14
 [1.1.13]: https://github.com/6639835/chart-viewer/compare/v1.1.12...v1.1.13
 [1.1.12]: https://github.com/6639835/chart-viewer/compare/v1.1.11...v1.1.12
 [1.1.11]: https://github.com/6639835/chart-viewer/compare/v1.1.10...v1.1.11
