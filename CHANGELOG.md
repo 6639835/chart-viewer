@@ -21,6 +21,31 @@
 
 ---
 
+## [1.2.0] - 2025-10-14
+
+### 新增
+- **SID/STAR 图表名称格式化**：为 SID 和 STAR 图表添加智能名称格式化功能
+  - 自动在程序类型（RNP/RNAV/ILS/VOR/NDB/LOC）和跑道之间添加空格
+  - 使用斜杠分隔多个跑道号（例如：`0136L36R` → `01/36L/36R`）
+  - 自动分割连续航点名称（例如：`GUVBAOSUBA` → `GUVBA/OSUBA`）
+  - 示例：`RNAVRWY0136L36R(GUVBAOSUBA)` → `RNAV RWY 01/36L/36R (GUVBA/OSUBA)`
+- **自动隐藏滚动条**：为 ChartList、SettingsModal 和 Sidebar 组件实现自动隐藏滚动条
+  - 滚动条仅在滚动时显示，提供更清爽的视觉体验
+  - 停止滚动 1 秒后自动淡出隐藏
+  - 支持平滑的过渡动画效果
+
+### 变更
+- **统一图表名称格式化**：PDF 查看器标题现在显示与图表列表相同的格式化名称
+  - 创建共享工具文件 `lib/chartFormatter.ts` 统一格式化逻辑
+  - PDFViewer 和 ChartList 组件使用相同的格式化函数
+  - 确保整个应用的图表名称显示一致性
+- **代码重构**：将图表格式化函数提取为独立模块，提高代码可维护性
+  - `formatAppChartName()` - APP 图表名称格式化
+  - `formatSidStarChartName()` - SID/STAR 图表名称格式化
+  - `getFormattedChartName()` - 统一入口函数
+
+---
+
 ## [1.1.13] - 2025-10-14
 
 ### 新增
@@ -566,7 +591,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.1.13...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/6639835/chart-viewer/compare/v1.1.13...v1.2.0
 [1.1.13]: https://github.com/6639835/chart-viewer/compare/v1.1.12...v1.1.13
 [1.1.12]: https://github.com/6639835/chart-viewer/compare/v1.1.11...v1.1.12
 [1.1.11]: https://github.com/6639835/chart-viewer/compare/v1.1.10...v1.1.11

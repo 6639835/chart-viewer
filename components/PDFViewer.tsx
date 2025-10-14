@@ -5,6 +5,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileText, Maximize2, Menu } from 'lucide-react';
 import { ChartData } from '@/types/chart';
 import { useTheme } from 'next-themes';
+import { getFormattedChartName } from '@/lib/chartFormatter';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
@@ -323,7 +324,7 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
         <div className="text-center text-gray-400 dark:text-gray-400">
           <FileText className="w-16 h-16 mx-auto mb-4 opacity-50" />
           <p className="text-lg">{error}</p>
-          <p className="text-sm mt-2">{chart.ChartName}</p>
+          <p className="text-sm mt-2">{getFormattedChartName(chart)}</p>
           <p className="text-xs mt-1 opacity-70">{chart.PAGE_NUMBER}</p>
         </div>
       </div>
@@ -349,7 +350,7 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
           
           <div className="text-gray-900 dark:text-white min-w-0">
             <p className="font-semibold text-sm sm:text-base truncate">
-              {chart.ChartName}
+              {getFormattedChartName(chart)}
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
               {chart.PAGE_NUMBER}
