@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, FolderOpen, Loader2, Check, AlertCircle, ChevronRight, ChevronLeft } from 'lucide-react';
 import { AppConfig } from '@/types/config';
 
@@ -31,6 +31,9 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
   const [browsing, setBrowsing] = useState<ConfigField | null>(null);
   const [directoryInfo, setDirectoryInfo] = useState<DirectoryInfo | null>(null);
   const [browseLoading, setBrowseLoading] = useState(false);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const directoryListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -164,6 +167,33 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
     }
   };
 
+  // Handle scroll for directory list
+  useEffect(() => {
+    const scrollContainer = directoryListRef.current;
+    if (!scrollContainer) return;
+    
+    const handleScroll = () => {
+      setIsScrolling(true);
+      
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      
+      scrollTimeoutRef.current = setTimeout(() => {
+        setIsScrolling(false);
+      }, 1000);
+    };
+    
+    scrollContainer.addEventListener('scroll', handleScroll);
+    
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, [browsing]);
+
   if (!isOpen) return null;
 
   return (
@@ -237,7 +267,10 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
                   </button>
 
                   {/* Subdirectories */}
-                  <div className="space-y-1 max-h-96 overflow-y-auto">
+                  <div 
+                    ref={directoryListRef}
+                    className={`space-y-1 max-h-96 overflow-y-auto auto-hide-scrollbar ${isScrolling ? 'scrolling' : ''}`}
+                  >
                     {directoryInfo.directories.map((dir) => (
                       <button
                         key={dir.path}

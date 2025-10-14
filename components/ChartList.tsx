@@ -2,7 +2,7 @@
 
 import { ChartData, ChartCategory } from '@/types/chart';
 import { FileText } from 'lucide-react';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 
 interface ChartListProps {
   charts: ChartData[];
@@ -279,11 +279,43 @@ export default function ChartList({
 }: ChartListProps) {
   // State for runway filter
   const [selectedRunwayFilter, setSelectedRunwayFilter] = useState<string | null>(null);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   // Reset filter when category changes
   useEffect(() => {
     setSelectedRunwayFilter(null);
   }, [category]);
+  
+  // Handle scroll event for auto-hide scrollbar
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+    
+    const handleScroll = () => {
+      setIsScrolling(true);
+      
+      // Clear existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      
+      // Hide scrollbar after 1 second of no scrolling
+      scrollTimeoutRef.current = setTimeout(() => {
+        setIsScrolling(false);
+      }, 1000);
+    };
+    
+    scrollContainer.addEventListener('scroll', handleScroll);
+    
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
   
   // TAXI category should not be grouped by runway
   const shouldGroupByRunway = category !== 'TAXI';
@@ -351,7 +383,10 @@ export default function ChartList({
   // Render ungrouped list for TAXI
   if (!shouldGroupByRunway) {
     return (
-      <div className="h-full overflow-y-auto bg-white dark:bg-gray-900">
+      <div 
+        ref={scrollContainerRef}
+        className={`h-full overflow-y-auto bg-white dark:bg-gray-900 auto-hide-scrollbar ${isScrolling ? 'scrolling' : ''}`}
+      >
         <div className="p-4 sm:p-6">
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-800">
             Charts ({sortedCharts.length})
@@ -399,7 +434,10 @@ export default function ChartList({
 
   // Render grouped list for other categories
   return (
-    <div className="h-full overflow-y-auto bg-white dark:bg-gray-900">
+    <div 
+      ref={scrollContainerRef}
+      className={`h-full overflow-y-auto bg-white dark:bg-gray-900 auto-hide-scrollbar ${isScrolling ? 'scrolling' : ''}`}
+    >
       <div className="p-4 sm:p-6">
         <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-800">
           Charts ({sortedCharts.length})

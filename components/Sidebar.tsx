@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { ChevronDown, Search, X, Settings } from 'lucide-react';
 import { ChartCategory, CATEGORY_ORDER } from '@/types/chart';
 import ThemeToggle from './ThemeToggle';
@@ -40,6 +40,12 @@ export default function Sidebar({
 }: SidebarProps) {
   const [isAirportDropdownOpen, setIsAirportDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isAirportScrolling, setIsAirportScrolling] = useState(false);
+  const [isCategoryScrolling, setIsCategoryScrolling] = useState(false);
+  const airportScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const categoryScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const airportListRef = useRef<HTMLDivElement>(null);
+  const categoryListRef = useRef<HTMLDivElement>(null);
 
   const filteredAirports = useMemo(() => {
     if (!searchQuery.trim()) return airports;
@@ -62,6 +68,63 @@ export default function Sidebar({
       onClose();
     }
   };
+
+  // Handle scroll for airport list
+  useEffect(() => {
+    // Only bind scroll listener when dropdown is open
+    if (!isAirportDropdownOpen) return;
+    
+    const scrollContainer = airportListRef.current;
+    if (!scrollContainer) return;
+    
+    const handleScroll = () => {
+      setIsAirportScrolling(true);
+      
+      if (airportScrollTimeoutRef.current) {
+        clearTimeout(airportScrollTimeoutRef.current);
+      }
+      
+      airportScrollTimeoutRef.current = setTimeout(() => {
+        setIsAirportScrolling(false);
+      }, 1000);
+    };
+    
+    scrollContainer.addEventListener('scroll', handleScroll);
+    
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      if (airportScrollTimeoutRef.current) {
+        clearTimeout(airportScrollTimeoutRef.current);
+      }
+    };
+  }, [isAirportDropdownOpen]);
+
+  // Handle scroll for category list
+  useEffect(() => {
+    const scrollContainer = categoryListRef.current;
+    if (!scrollContainer) return;
+    
+    const handleScroll = () => {
+      setIsCategoryScrolling(true);
+      
+      if (categoryScrollTimeoutRef.current) {
+        clearTimeout(categoryScrollTimeoutRef.current);
+      }
+      
+      categoryScrollTimeoutRef.current = setTimeout(() => {
+        setIsCategoryScrolling(false);
+      }, 1000);
+    };
+    
+    scrollContainer.addEventListener('scroll', handleScroll);
+    
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      if (categoryScrollTimeoutRef.current) {
+        clearTimeout(categoryScrollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="w-20 bg-gray-100 dark:bg-gray-900 border-r border-gray-300 dark:border-gray-800 flex flex-col h-screen">
@@ -93,9 +156,9 @@ export default function Sidebar({
                   setSearchQuery('');
                 }}
               />
-              <div className="absolute left-full top-0 ml-2 w-64 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl z-20 max-h-96 flex flex-col">
+              <div className="absolute left-full top-0 ml-2 w-64 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl z-20 flex flex-col" style={{ maxHeight: '24rem' }}>
                 {/* Search Box */}
-                <div className="p-3 border-b border-gray-300 dark:border-gray-700">
+                <div className="p-3 border-b border-gray-300 dark:border-gray-700 flex-shrink-0">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
                     <input
@@ -110,7 +173,10 @@ export default function Sidebar({
                 </div>
                 
                 {/* Airport List */}
-                <div className="overflow-y-auto">
+                <div 
+                  ref={airportListRef}
+                  className={`flex-1 overflow-y-auto auto-hide-scrollbar ${isAirportScrolling ? 'scrolling' : ''}`}
+                >
                   {filteredAirports.length > 0 ? (
                     filteredAirports.map(airport => (
                       <button
@@ -138,7 +204,10 @@ export default function Sidebar({
       </div>
 
       {/* Categories - Vertical compact buttons */}
-      <div className="flex-1 overflow-y-auto py-2">
+      <div 
+        ref={categoryListRef}
+        className={`flex-1 overflow-y-auto py-2 auto-hide-scrollbar ${isCategoryScrolling ? 'scrolling' : ''}`}
+      >
         <div className="space-y-1 px-2">
           {CATEGORY_ORDER.map(category => {
             const count = categoryCounts[category] || 0;
