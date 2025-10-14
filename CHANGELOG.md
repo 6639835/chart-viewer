@@ -21,6 +21,33 @@
 
 ---
 
+## [1.1.13] - 2025-10-14
+
+### 新增
+- **自动隐藏滚动条**：优化 PDF 查看器的滚动条显示逻辑
+  - 滚动条仅在滚动时显示，提供更清爽的视觉体验
+  - 停止滚动 1 秒后自动淡出隐藏
+  - 支持平滑的过渡动画效果
+  - 横向和纵向滚动条均支持自动隐藏
+
+### 修复
+- **修复 auto 缩放模式下的滚动问题**
+  - 在 auto 模式下禁用普通滚动（触摸板和鼠标滚轮），避免意外滚动
+  - 保留 Ctrl/Cmd + 滚轮缩放功能，用户可以随时通过缩放退出 auto 模式
+  - auto 模式下设置 `overflow: hidden`，不显示滚动条
+- **修复 Electron 开发模式端口占用问题**
+  - 修复 `electron-dev.js` 和 `electron/main.js` 重复启动 Next.js 服务器的问题
+  - 添加端口占用检测，避免 "EADDRINUSE" 错误
+  - 开发模式下如果服务器已运行，Electron 主进程会直接使用现有服务器
+
+### 变更
+- 优化 PDF 查看器交互逻辑：
+  - auto 模式：禁用滚动，但允许 Ctrl/Cmd + 滚轮缩放
+  - 手动模式：支持正常滚动和缩放
+  - 改进用户体验，行为更符合预期
+
+---
+
 ## [1.1.12] - 2025-10-14
 
 ### 变更
@@ -539,7 +566,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.1.12...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.1.13...HEAD
+[1.1.13]: https://github.com/6639835/chart-viewer/compare/v1.1.12...v1.1.13
 [1.1.12]: https://github.com/6639835/chart-viewer/compare/v1.1.11...v1.1.12
 [1.1.11]: https://github.com/6639835/chart-viewer/compare/v1.1.10...v1.1.11
 [1.1.10]: https://github.com/6639835/chart-viewer/compare/v1.1.9...v1.1.10

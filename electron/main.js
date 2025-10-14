@@ -127,11 +127,37 @@ function createWindow() {
   });
 }
 
+// Check if port is in use
+function checkPort(port) {
+  return new Promise((resolve) => {
+    const net = require('net');
+    const server = net.createServer();
+    server.once('error', () => {
+      resolve(true); // Port is in use
+    });
+    server.once('listening', () => {
+      server.close();
+      resolve(false); // Port is free
+    });
+    server.listen(port);
+  });
+}
+
 // Start Next.js server (both development and production)
 async function startNextServer() {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     // Assign port before starting server
     serverPort = getPort();
+    
+    // In development mode, check if server is already running
+    if (isDev) {
+      const portInUse = await checkPort(serverPort);
+      if (portInUse) {
+        console.log(`Next.js development server already running on port ${serverPort}`);
+        // Server is already running (started by electron-dev.js), just resolve
+        return resolve();
+      }
+    }
     
     console.log(`Starting Next.js ${isDev ? 'development' : 'production'} server on port ${serverPort}...`);
     

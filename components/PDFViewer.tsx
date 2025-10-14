@@ -33,9 +33,11 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [scrollStart, setScrollStart] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
+  const [isScrolling, setIsScrolling] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfWrapperRef = useRef<HTMLDivElement>(null);
   const rerenderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { theme } = useTheme();
   
   // Determine if colors should be inverted based on theme
@@ -132,6 +134,35 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
     };
   }, [isDragging, dragStart, scrollStart, autoFit]);
 
+  // Detect scrolling to show/hide scrollbar
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+
+    const handleScroll = () => {
+      setIsScrolling(true);
+      
+      // Clear existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      
+      // Hide scrollbar after 1 second of no scrolling
+      scrollTimeoutRef.current = setTimeout(() => {
+        setIsScrolling(false);
+      }, 1000);
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Mouse wheel zoom (Ctrl/Cmd + scroll) with intelligent re-rendering
   useEffect(() => {
     if (!containerRef.current) return;
@@ -170,6 +201,9 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
           
           return newScale;
         });
+      } else if (autoFit) {
+        // In autoFit mode, prevent normal scrolling (without Ctrl/Cmd)
+        e.preventDefault();
       }
     };
 
@@ -182,7 +216,7 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
         clearTimeout(rerenderTimeoutRef.current);
       }
     };
-  }, [renderScale]);
+  }, [renderScale, autoFit]);
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
@@ -369,9 +403,9 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
       {/* PDF Content */}
       <div 
         ref={containerRef}
-        className={`flex-1 overflow-auto p-2 sm:p-4 bg-gray-200 dark:bg-gray-900 ${
-          autoFit ? 'flex items-center justify-center' : ''
-        } ${isDragging ? 'select-none' : ''}`}
+        className={`flex-1 p-2 sm:p-4 bg-gray-200 dark:bg-gray-900 ${
+          autoFit ? 'overflow-hidden flex items-center justify-center' : 'overflow-auto auto-hide-scrollbar'
+        } ${isDragging ? 'select-none' : ''} ${isScrolling ? 'scrolling' : ''}`}
         style={{ 
           cursor: autoFit ? 'default' : (isDragging ? 'grabbing' : 'grab'),
           userSelect: isDragging ? 'none' : 'auto'

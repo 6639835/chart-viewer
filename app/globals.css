@@ -84,3 +84,45 @@ body {
   backface-visibility: hidden;
 }
 
+/* Auto-hide scrollbar - only show when scrolling */
+.auto-hide-scrollbar {
+  scrollbar-width: thin; /* For Firefox */
+  scrollbar-color: transparent transparent;
+}
+
+.auto-hide-scrollbar.scrolling {
+  scrollbar-color: #4b5563 transparent; /* Show when scrolling */
+}
+
+.light .auto-hide-scrollbar.scrolling {
+  scrollbar-color: #9ca3af transparent;
+}
+
+/* Webkit browsers (Chrome, Safari, Edge) */
+.auto-hide-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.auto-hide-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.auto-hide-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 5px;
+  transition: background 0.3s ease-out;
+}
+
+.auto-hide-scrollbar.scrolling::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
+.light .auto-hide-scrollbar.scrolling::-webkit-scrollbar-thumb {
+  background: #9ca3af;
+}
+
+.auto-hide-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #6b7280 !important;
+}
+
