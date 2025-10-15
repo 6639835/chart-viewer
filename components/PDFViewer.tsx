@@ -424,8 +424,8 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
           {/* Outer container: defines the correct scroll area size based on user's scale */}
           <div
             style={{
-              width: autoFit ? 'auto' : (!pageWidth ? 'auto' : `${pageWidth * scale}px`),
-              height: autoFit ? 'auto' : (!pageHeight ? 'auto' : `${pageHeight * scale}px`),
+              width: autoFit ? 'auto' : (!pageWidth ? 'auto' : `${Math.ceil(pageWidth * scale) + 16}px`),
+              height: autoFit ? 'auto' : (!pageHeight ? 'auto' : `${Math.ceil(pageHeight * scale) + 16}px`),
               position: 'relative',
               display: autoFit ? 'flex' : 'block',
               justifyContent: autoFit ? 'center' : 'initial',
@@ -445,8 +445,8 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
                 transition: 'transform 0.05s ease-out',
                 willChange: 'transform',
                 position: autoFit ? 'static' : 'absolute',
-                top: 0,
-                left: 0
+                top: 2,
+                left: 2
               }}
               className="pdf-page-wrapper"
             >

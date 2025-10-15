@@ -122,6 +122,20 @@ git push --tags
 
 For detailed release documentation, see [`.github/workflows/README.md`](.github/workflows/README.md).
 
+### macOS Installation (Unsigned App)
+
+Since the application is not code-signed with an Apple Developer certificate, macOS Gatekeeper may block it from running. After installing the DMG, run this command in Terminal to remove the quarantine attribute:
+
+```bash
+xattr -cr "/Applications/Chart Viewer.app"
+```
+
+**Alternative methods:**
+1. **Right-click method**: Right-click the app → Open → Click "Open" in the security dialog
+2. **System Settings**: Go to System Settings → Privacy & Security → Allow the app to run
+
+**Note**: This is only required for the first launch. The command removes the quarantine flag that macOS applies to downloaded applications.
+
 ## Project Structure
 
 ```

@@ -21,6 +21,17 @@
 
 ---
 
+## [1.2.1] - 2025-10-15
+
+### 修复
+- **修复 PDF 容器尺寸计算精度问题**：优化 PDF 渲染容器的尺寸计算
+  - 使用 `Math.ceil()` 对尺寸进行向上取整，避免浮点数误差导致的显示问题
+  - 为容器宽高添加 16px 内边距，确保 PDF 完整显示不被裁剪
+  - 调整 PDF 内层容器的定位偏移（top: 2px, left: 2px），改善边缘对齐
+  - 修复在某些缩放比例下 PDF 边缘被裁剪或显示不完整的问题
+
+---
+
 ## [1.2.0] - 2025-10-14
 
 ### 新增
@@ -591,7 +602,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.2.0...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/6639835/chart-viewer/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/6639835/chart-viewer/compare/v1.1.13...v1.2.0
 [1.1.13]: https://github.com/6639835/chart-viewer/compare/v1.1.12...v1.1.13
 [1.1.12]: https://github.com/6639835/chart-viewer/compare/v1.1.11...v1.1.12
