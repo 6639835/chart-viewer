@@ -362,70 +362,74 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar, bookmarkedChar
 
         {/* Controls section */}
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-          {/* Zoom Controls */}
-          <div className="hidden sm:flex items-center gap-1">
+          {/* Zoom Controls - Show on all screens */}
+          <div className="flex items-center gap-0.5 sm:gap-1">
             <button
               onClick={zoomOut}
               disabled={scale <= 0.5 || autoFit}
-              className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Zoom Out (or use Ctrl/Cmd + Scroll)"
+              className="p-1 sm:p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Zoom Out"
             >
-              <ZoomOut className="w-4 h-4" />
+              <ZoomOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
             <span 
-              className="text-gray-900 dark:text-white text-xs w-12 text-center"
-              title="Use Ctrl/Cmd + Mouse Wheel to zoom"
+              className="text-gray-900 dark:text-white text-[10px] sm:text-xs w-8 sm:w-12 text-center"
+              title="Current zoom level"
             >
               {autoFit ? 'Auto' : `${Math.round(scale * 100)}%`}
             </span>
             <button
               onClick={zoomIn}
               disabled={scale >= 3.0 || autoFit}
-              className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Zoom In (or use Ctrl/Cmd + Scroll)"
+              className="p-1 sm:p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Zoom In"
             >
-              <ZoomIn className="w-4 h-4" />
+              <ZoomIn className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           </div>
 
-          {/* Auto Fit Button */}
+          {/* Auto Fit Button - Show on all screens */}
           <button
             onClick={toggleAutoFit}
-            className={`hidden sm:flex p-1.5 ml-2 rounded transition-colors ${
+            className={`flex p-1 sm:p-1.5 ml-1 sm:ml-2 rounded transition-colors ${
               autoFit
                 ? 'bg-blue-500 text-white'
                 : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
             title="Fit to Window"
           >
-            <Maximize2 className="w-4 h-4" />
+            <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
 
-          {/* Bookmark Navigation - Show only when there are multiple bookmarked charts */}
-          {bookmarkedCharts.length > 1 && (
-            <div className="flex items-center gap-1 ml-2 pl-2 border-l border-gray-300 dark:border-gray-600">
-              <button
-                onClick={() => onNavigateToBookmark('prev')}
-                className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
-                title="Previous Bookmark"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <div className="flex items-center gap-1 px-2">
-                <Bookmark className="w-3.5 h-3.5 text-blue-500" />
-                <span className="text-xs text-gray-900 dark:text-white font-medium">
-                  {bookmarkedCharts.length}
-                </span>
+          {/* Bookmark Navigation - Show on tablets (iPad) and larger, hide on phones */}
+          {bookmarkedCharts.length > 1 && (() => {
+            const currentIndex = bookmarkedCharts.findIndex(c => c.ChartId === chart.ChartId);
+            const displayIndex = currentIndex >= 0 ? currentIndex + 1 : 1;
+            return (
+              <div className="hidden md:flex items-center gap-1 ml-2 pl-2 border-l border-gray-300 dark:border-gray-600">
+                <button
+                  onClick={() => onNavigateToBookmark('prev')}
+                  className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                  title="Previous Bookmark"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <div className="flex items-center gap-1 px-2">
+                  <Bookmark className="w-3.5 h-3.5 text-blue-500" />
+                  <span className="text-xs text-gray-900 dark:text-white font-medium whitespace-nowrap">
+                    {displayIndex} / {bookmarkedCharts.length}
+                  </span>
+                </div>
+                <button
+                  onClick={() => onNavigateToBookmark('next')}
+                  className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                  title="Next Bookmark"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                onClick={() => onNavigateToBookmark('next')}
-                className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
-                title="Next Bookmark"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </div>
 

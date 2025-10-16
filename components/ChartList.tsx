@@ -236,7 +236,7 @@ export default function ChartList({
                 <div key={chart.ChartId} className="relative">
                   <button
                     onClick={() => onChartSelect(chart)}
-                    className={`w-full p-4 rounded-lg transition-all text-left ${
+                    className={`w-full p-4 pr-12 rounded-lg transition-all text-left ${
                       selectedChart?.ChartId === chart.ChartId
                         ? 'bg-blue-500 text-white shadow-lg'
                         : isSup
@@ -257,7 +257,7 @@ export default function ChartList({
                               : 'text-blue-500 dark:text-blue-400'
                       }`} />
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm sm:text-base mb-2 line-clamp-2 leading-snug">
+                        <p className="font-semibold text-sm sm:text-base mb-2 line-clamp-2 leading-snug break-words">
                           {getDisplayName(chart)}
                         </p>
                         <p className={`text-xs sm:text-sm mb-1 truncate ${
@@ -375,7 +375,7 @@ export default function ChartList({
                       <div key={chart.ChartId} className="relative">
                         <button
                           onClick={() => onChartSelect(chart)}
-                          className={`w-full p-4 rounded-lg transition-all text-left ${
+                          className={`w-full p-4 pr-12 rounded-lg transition-all text-left ${
                             selectedChart?.ChartId === chart.ChartId
                               ? 'bg-blue-500 text-white shadow-lg'
                               : isSup
@@ -396,7 +396,7 @@ export default function ChartList({
                                     : 'text-blue-500 dark:text-blue-400'
                             }`} />
                             <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-sm sm:text-base mb-2 line-clamp-2 leading-snug">
+                              <p className="font-semibold text-sm sm:text-base mb-2 line-clamp-2 leading-snug break-words">
                                 {getDisplayName(chart)}
                               </p>
                               <p className={`text-xs sm:text-sm mb-1 truncate ${
