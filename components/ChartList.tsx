@@ -1,7 +1,7 @@
 'use client';
 
 import { ChartData, ChartCategory } from '@/types/chart';
-import { FileText } from 'lucide-react';
+import { FileText, Circle, CheckCircle2 } from 'lucide-react';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { formatAppChartName, formatSidStarChartName } from '@/lib/chartFormatter';
 
@@ -10,6 +10,8 @@ interface ChartListProps {
   selectedChart: ChartData | null;
   onChartSelect: (chart: ChartData) => void;
   category?: ChartCategory | null;
+  bookmarkedCharts: Set<string>;
+  onToggleBookmark: (chart: ChartData, category: ChartCategory) => void;
 }
 
 // Extract runway information from chart name
@@ -105,6 +107,8 @@ export default function ChartList({
   selectedChart,
   onChartSelect,
   category,
+  bookmarkedCharts,
+  onToggleBookmark,
 }: ChartListProps) {
   // State for runway filter
   const [selectedRunwayFilter, setSelectedRunwayFilter] = useState<string | null>(null);
@@ -224,40 +228,79 @@ export default function ChartList({
             Charts ({sortedCharts.length})
           </h2>
           <div className="space-y-2">
-            {sortedCharts.map(chart => (
-              <button
-                key={chart.ChartId}
-                onClick={() => onChartSelect(chart)}
-                className={`w-full p-4 rounded-lg transition-all text-left ${
-                  selectedChart?.ChartId === chart.ChartId
-                    ? 'bg-blue-500 text-white shadow-lg'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <FileText className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
-                    selectedChart?.ChartId === chart.ChartId ? 'text-white' : 'text-blue-500 dark:text-blue-400'
-                  }`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm sm:text-base mb-2 line-clamp-2 leading-snug">
-                      {getDisplayName(chart)}
-                    </p>
-                    <p className={`text-xs sm:text-sm mb-1 truncate ${
-                      selectedChart?.ChartId === chart.ChartId ? 'opacity-90' : 'text-gray-600 dark:text-gray-400'
-                    }`}>
-                      {chart.PAGE_NUMBER}
-                    </p>
-                    {chart.ChartTypeEx_CH && (
-                      <p className={`text-xs truncate ${
-                        selectedChart?.ChartId === chart.ChartId ? 'opacity-80' : 'text-gray-500 dark:text-gray-500'
-                      }`}>
-                        {chart.ChartTypeEx_CH}
-                      </p>
+            {sortedCharts.map(chart => {
+              const isSup = chart.IS_SUP === 'Y';
+              const isModified = chart.IS_MODIFIED === 'Y';
+              const isBookmarked = bookmarkedCharts.has(chart.ChartId);
+              return (
+                <div key={chart.ChartId} className="relative">
+                  <button
+                    onClick={() => onChartSelect(chart)}
+                    className={`w-full p-4 rounded-lg transition-all text-left ${
+                      selectedChart?.ChartId === chart.ChartId
+                        ? 'bg-blue-500 text-white shadow-lg'
+                        : isSup
+                          ? 'bg-amber-50 dark:bg-amber-900/20 text-gray-900 dark:text-white hover:bg-amber-100 dark:hover:bg-amber-900/30 border-2 border-amber-400 dark:border-amber-600'
+                          : isModified
+                            ? 'bg-blue-50 dark:bg-blue-900/20 text-gray-900 dark:text-white hover:bg-blue-100 dark:hover:bg-blue-900/30 border-2 border-blue-400 dark:border-blue-600'
+                            : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <FileText className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
+                        selectedChart?.ChartId === chart.ChartId 
+                          ? 'text-white' 
+                          : isSup
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : isModified 
+                              ? 'text-blue-600 dark:text-blue-400' 
+                              : 'text-blue-500 dark:text-blue-400'
+                      }`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm sm:text-base mb-2 line-clamp-2 leading-snug">
+                          {getDisplayName(chart)}
+                        </p>
+                        <p className={`text-xs sm:text-sm mb-1 truncate ${
+                          selectedChart?.ChartId === chart.ChartId ? 'opacity-90' : 'text-gray-600 dark:text-gray-400'
+                        }`}>
+                          {chart.PAGE_NUMBER}
+                        </p>
+                        {chart.ChartTypeEx_CH && (
+                          <p className={`text-xs truncate ${
+                            selectedChart?.ChartId === chart.ChartId ? 'opacity-80' : 'text-gray-500 dark:text-gray-500'
+                          }`}>
+                            {chart.ChartTypeEx_CH}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                  {/* Bookmark button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleBookmark(chart, category!);
+                    }}
+                    className="absolute top-2 right-2 p-2 rounded-full hover:bg-white/20 dark:hover:bg-black/20 transition-colors z-10"
+                    title={isBookmarked ? "Remove bookmark" : "Add bookmark"}
+                  >
+                    {isBookmarked ? (
+                      <CheckCircle2 className={`w-5 h-5 ${
+                        selectedChart?.ChartId === chart.ChartId
+                          ? 'text-white'
+                          : 'text-green-600 dark:text-green-400'
+                      }`} />
+                    ) : (
+                      <Circle className={`w-5 h-5 ${
+                        selectedChart?.ChartId === chart.ChartId
+                          ? 'text-white opacity-70'
+                          : 'text-gray-400 dark:text-gray-500'
+                      }`} />
                     )}
-                  </div>
+                  </button>
                 </div>
-              </button>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -324,40 +367,79 @@ export default function ChartList({
                 
                 {/* Charts List */}
                 <div className="space-y-2">
-                  {runwayCharts.map(chart => (
-                    <button
-                      key={chart.ChartId}
-                      onClick={() => onChartSelect(chart)}
-                      className={`w-full p-4 rounded-lg transition-all text-left ${
-                        selectedChart?.ChartId === chart.ChartId
-                          ? 'bg-blue-500 text-white shadow-lg'
-                          : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <FileText className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
-                          selectedChart?.ChartId === chart.ChartId ? 'text-white' : 'text-blue-500 dark:text-blue-400'
-                        }`} />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm sm:text-base mb-2 line-clamp-2 leading-snug">
-                            {getDisplayName(chart)}
-                          </p>
-                          <p className={`text-xs sm:text-sm mb-1 truncate ${
-                            selectedChart?.ChartId === chart.ChartId ? 'opacity-90' : 'text-gray-600 dark:text-gray-400'
-                          }`}>
-                            {chart.PAGE_NUMBER}
-                          </p>
-                          {chart.ChartTypeEx_CH && (
-                            <p className={`text-xs truncate ${
-                              selectedChart?.ChartId === chart.ChartId ? 'opacity-80' : 'text-gray-500 dark:text-gray-500'
-                            }`}>
-                              {chart.ChartTypeEx_CH}
-                            </p>
+                  {runwayCharts.map(chart => {
+                    const isSup = chart.IS_SUP === 'Y';
+                    const isModified = chart.IS_MODIFIED === 'Y';
+                    const isBookmarked = bookmarkedCharts.has(chart.ChartId);
+                    return (
+                      <div key={chart.ChartId} className="relative">
+                        <button
+                          onClick={() => onChartSelect(chart)}
+                          className={`w-full p-4 rounded-lg transition-all text-left ${
+                            selectedChart?.ChartId === chart.ChartId
+                              ? 'bg-blue-500 text-white shadow-lg'
+                              : isSup
+                                ? 'bg-amber-50 dark:bg-amber-900/20 text-gray-900 dark:text-white hover:bg-amber-100 dark:hover:bg-amber-900/30 border-2 border-amber-400 dark:border-amber-600'
+                                : isModified
+                                  ? 'bg-blue-50 dark:bg-blue-900/20 text-gray-900 dark:text-white hover:bg-blue-100 dark:hover:bg-blue-900/30 border-2 border-blue-400 dark:border-blue-600'
+                                  : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <FileText className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
+                              selectedChart?.ChartId === chart.ChartId 
+                                ? 'text-white' 
+                                : isSup
+                                  ? 'text-amber-600 dark:text-amber-400'
+                                  : isModified 
+                                    ? 'text-blue-600 dark:text-blue-400' 
+                                    : 'text-blue-500 dark:text-blue-400'
+                            }`} />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-sm sm:text-base mb-2 line-clamp-2 leading-snug">
+                                {getDisplayName(chart)}
+                              </p>
+                              <p className={`text-xs sm:text-sm mb-1 truncate ${
+                                selectedChart?.ChartId === chart.ChartId ? 'opacity-90' : 'text-gray-600 dark:text-gray-400'
+                              }`}>
+                                {chart.PAGE_NUMBER}
+                              </p>
+                              {chart.ChartTypeEx_CH && (
+                                <p className={`text-xs truncate ${
+                                  selectedChart?.ChartId === chart.ChartId ? 'opacity-80' : 'text-gray-500 dark:text-gray-500'
+                                }`}>
+                                  {chart.ChartTypeEx_CH}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                        {/* Bookmark button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleBookmark(chart, category!);
+                          }}
+                          className="absolute top-2 right-2 p-2 rounded-full hover:bg-white/20 dark:hover:bg-black/20 transition-colors z-10"
+                          title={isBookmarked ? "Remove bookmark" : "Add bookmark"}
+                        >
+                          {isBookmarked ? (
+                            <CheckCircle2 className={`w-5 h-5 ${
+                              selectedChart?.ChartId === chart.ChartId
+                                ? 'text-white'
+                                : 'text-green-600 dark:text-green-400'
+                            }`} />
+                          ) : (
+                            <Circle className={`w-5 h-5 ${
+                              selectedChart?.ChartId === chart.ChartId
+                                ? 'text-white opacity-70'
+                                : 'text-gray-400 dark:text-gray-500'
+                            }`} />
                           )}
-                        </div>
+                        </button>
                       </div>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );

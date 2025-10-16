@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileText, Maximize2, Menu } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileText, Maximize2, Menu, Bookmark } from 'lucide-react';
 import { ChartData } from '@/types/chart';
 import { useTheme } from 'next-themes';
 import { getFormattedChartName } from '@/lib/chartFormatter';
@@ -16,9 +16,11 @@ interface PDFViewerProps {
   pdfUrl: string;
   chart: ChartData;
   onOpenSidebar?: () => void;
+  bookmarkedCharts: ChartData[];
+  onNavigateToBookmark: (direction: 'next' | 'prev') => void;
 }
 
-export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerProps) {
+export default function PDFViewer({ pdfUrl, chart, onOpenSidebar, bookmarkedCharts, onNavigateToBookmark }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [scale, setScale] = useState<number>(1.0);
@@ -398,6 +400,32 @@ export default function PDFViewer({ pdfUrl, chart, onOpenSidebar }: PDFViewerPro
           >
             <Maximize2 className="w-4 h-4" />
           </button>
+
+          {/* Bookmark Navigation - Show only when there are multiple bookmarked charts */}
+          {bookmarkedCharts.length > 1 && (
+            <div className="flex items-center gap-1 ml-2 pl-2 border-l border-gray-300 dark:border-gray-600">
+              <button
+                onClick={() => onNavigateToBookmark('prev')}
+                className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                title="Previous Bookmark"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-1 px-2">
+                <Bookmark className="w-3.5 h-3.5 text-blue-500" />
+                <span className="text-xs text-gray-900 dark:text-white font-medium">
+                  {bookmarkedCharts.length}
+                </span>
+              </div>
+              <button
+                onClick={() => onNavigateToBookmark('next')}
+                className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                title="Next Bookmark"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
