@@ -51,6 +51,17 @@ export function formatSidStarChartName(chartName: string): string {
     return `${type.toUpperCase()} RWY ${rwy}`;
   });
   
+  // Handle standalone RWY without prefix (e.g., RWY09 -> RWY 09, RWY18L -> RWY 18L)
+  formatted = formatted.replace(/^RWY(\d{1,2}[LRC]?(?:\d{2}[LRC]?)*)/gi, (match, rwy) => {
+    // Split runway numbers and add slashes if multiple runways
+    const runwayParts = rwy.match(/\d{2}[LRC]?/g);
+    if (runwayParts) {
+      const formattedRwy = runwayParts.join('/');
+      return `RWY ${formattedRwy}`;
+    }
+    return `RWY ${rwy}`;
+  });
+  
   // Handle waypoints in parentheses: (GUVBAOSUBA) -> (GUVBA/OSUBA)
   formatted = formatted.replace(/\(([A-Z]{10,})\)/g, (match, waypoints) => {
     // Split waypoints (typically 5 characters each)

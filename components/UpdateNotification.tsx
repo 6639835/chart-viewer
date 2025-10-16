@@ -60,7 +60,11 @@ export default function UpdateNotification() {
   const handleOpenRelease = () => {
     const releaseUrl = `https://github.com/6639835/chart-viewer/releases/latest`;
     if (typeof window !== 'undefined') {
-      window.open(releaseUrl, '_blank');
+      if (window.electronAPI) {
+        window.electronAPI.openExternal(releaseUrl);
+      } else {
+        window.open(releaseUrl, '_blank', 'noopener,noreferrer');
+      }
     }
   };
 

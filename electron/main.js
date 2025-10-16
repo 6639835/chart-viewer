@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -313,6 +313,17 @@ ipcMain.handle('get-app-version', () => {
 // Check if running in Electron
 ipcMain.handle('is-electron', () => {
   return true;
+});
+
+// Open URL in default browser
+ipcMain.handle('open-external', async (event, url) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    console.error('Error opening external URL:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 // Get config file path (in userData directory)

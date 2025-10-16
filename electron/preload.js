@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Check if running in Electron
   isElectron: () => ipcRenderer.invoke('is-electron'),
   
+  // Open URL in default browser
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  
   // Auto-updater methods
   updater: {
     // Check for updates

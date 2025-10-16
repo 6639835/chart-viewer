@@ -21,6 +21,28 @@
 
 ---
 
+## [1.2.2] - 2025-10-16
+
+### 新增
+- **外部链接在系统浏览器中打开**：添加 `openExternal` API 支持在默认浏览器中打开链接
+  - 主页和设置页面的 GitHub 链接现在在 Electron 环境中会在系统默认浏览器中打开
+  - 更新通知中的 GitHub Release 链接也使用系统浏览器打开
+  - 提供更好的用户体验，避免在应用内打开外部链接
+- **独立跑道格式支持**：图表名称格式化功能增强，支持独立 RWY 格式
+  - 自动格式化 `RWY09` → `RWY 09`
+  - 自动格式化 `RWY18L` → `RWY 18L`
+  - 支持多跑道格式：`RWY0136L36R` → `RWY 01/36L/36R`
+
+### 变更
+- 主页和设置页面中的 GitHub 链接从 `<a>` 标签改为 `<button>` 元素
+  - 在 Electron 环境中使用 `electronAPI.openExternal()` 打开链接
+  - 在 Web 环境中继续使用 `window.open()` 作为后备方案
+- electron/main.js 添加 `shell` 模块导入和 `open-external` IPC 处理器
+- electron/preload.js 向渲染进程暴露 `openExternal` 方法
+- types/electron.d.ts 更新类型定义，添加 `openExternal` 方法签名
+
+---
+
 ## [1.2.1] - 2025-10-15
 
 ### 修复
@@ -602,7 +624,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.2.1...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/6639835/chart-viewer/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/6639835/chart-viewer/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/6639835/chart-viewer/compare/v1.1.13...v1.2.0
 [1.1.13]: https://github.com/6639835/chart-viewer/compare/v1.1.12...v1.1.13

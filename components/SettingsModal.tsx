@@ -368,14 +368,19 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
                   <p>Chart Viewer - EFB {version ? `v${version}` : 'v1.0.0'}</p>
                   <p>© 2025 Justin. All rights reserved.</p>
                   <p>Licensed under MIT License</p>
-                  <a 
-                    href="https://github.com/6639835/chart-viewer" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-blue-600 dark:text-blue-400 hover:underline inline-block"
+                  <button
+                    onClick={() => {
+                      const url = "https://github.com/6639835/chart-viewer";
+                      if (typeof window !== 'undefined' && window.electronAPI) {
+                        window.electronAPI.openExternal(url);
+                      } else {
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                      }
+                    }}
+                    className="text-blue-600 dark:text-blue-400 hover:underline inline-block cursor-pointer"
                   >
                     GitHub Repository →
-                  </a>
+                  </button>
                 </div>
               </div>
 

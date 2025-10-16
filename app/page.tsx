@@ -194,14 +194,19 @@ export default function Home() {
                 {/* Copyright Footer */}
                 <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-600">
                   <p>Chart Viewer - EFB © 2025 Justin</p>
-                  <a 
-                    href="https://github.com/6639835/chart-viewer" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 inline-block mt-1"
+                  <button
+                    onClick={() => {
+                      const url = "https://github.com/6639835/chart-viewer";
+                      if (typeof window !== 'undefined' && window.electronAPI) {
+                        window.electronAPI.openExternal(url);
+                      } else {
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                      }
+                    }}
+                    className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 inline-block mt-1 cursor-pointer"
                   >
                     GitHub Repository
-                  </a>
+                  </button>
                 </div>
               </div>
             </div>

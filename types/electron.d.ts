@@ -23,6 +23,8 @@ export interface ElectronAPI {
   
   isElectron: () => Promise<boolean>;
   
+  openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
+  
   updater: {
     checkForUpdates: () => Promise<{ available: boolean; result?: any; error?: string; message?: string }>;
     onChecking: (callback: () => void) => () => void;
