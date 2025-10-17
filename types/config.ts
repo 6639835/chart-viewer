@@ -4,6 +4,6 @@ export interface AppConfig {
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
-  chartsDirectory: 'charts',
-  csvDirectory: 'csv',
+  chartsDirectory: "charts",
+  csvDirectory: "csv",
 };

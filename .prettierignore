@@ -1,0 +1,40 @@
+# Dependencies
+node_modules
+
+# Build outputs
+.next
+out
+dist
+build
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+*.pem
+
+# Debug
+.vscode
+.idea
+
+# Misc
+coverage
+.env*.local
+
+# Charts and CSV data
+charts
+csv
+
+# Package lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Generated icons
+public/icon.icns
+public/icon.ico
+

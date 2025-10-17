@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useState, useMemo, useRef, useEffect } from 'react';
-import { ChevronDown, Search, X, Settings } from 'lucide-react';
-import { ChartCategory, CATEGORY_ORDER } from '@/types/chart';
-import ThemeToggle from './ThemeToggle';
+import { useState, useMemo, useRef, useEffect } from "react";
+import { ChevronDown, Search, X, Settings } from "lucide-react";
+import { ChartCategory, CATEGORY_ORDER } from "@/types/chart";
+import ThemeToggle from "./ThemeToggle";
 
 interface SidebarProps {
   airports: string[];
@@ -19,12 +19,12 @@ interface SidebarProps {
 
 // Category display names mapping
 const CATEGORY_NAMES: Record<ChartCategory, string> = {
-  'STAR': 'STAR',
-  'APP': 'APP',
-  'TAXI': 'TAXI',
-  'SID': 'SID',
-  'OTHER': 'OTHER',
-  '细则': '细则'
+  STAR: "STAR",
+  APP: "APP",
+  TAXI: "TAXI",
+  SID: "SID",
+  OTHER: "OTHER",
+  细则: "细则",
 };
 
 export default function Sidebar({
@@ -39,7 +39,7 @@ export default function Sidebar({
   onCloseCategory,
 }: SidebarProps) {
   const [isAirportDropdownOpen, setIsAirportDropdownOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [isAirportScrolling, setIsAirportScrolling] = useState(false);
   const [isCategoryScrolling, setIsCategoryScrolling] = useState(false);
   const airportScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -50,15 +50,13 @@ export default function Sidebar({
   const filteredAirports = useMemo(() => {
     if (!searchQuery.trim()) return airports;
     const query = searchQuery.toLowerCase();
-    return airports.filter(airport => 
-      airport.toLowerCase().includes(query)
-    );
+    return airports.filter((airport) => airport.toLowerCase().includes(query));
   }, [airports, searchQuery]);
 
   const handleAirportSelect = (airport: string) => {
     onAirportChange(airport);
     setIsAirportDropdownOpen(false);
-    setSearchQuery('');
+    setSearchQuery("");
   };
 
   const handleCategorySelect = (category: ChartCategory) => {
@@ -73,26 +71,26 @@ export default function Sidebar({
   useEffect(() => {
     // Only bind scroll listener when dropdown is open
     if (!isAirportDropdownOpen) return;
-    
+
     const scrollContainer = airportListRef.current;
     if (!scrollContainer) return;
-    
+
     const handleScroll = () => {
       setIsAirportScrolling(true);
-      
+
       if (airportScrollTimeoutRef.current) {
         clearTimeout(airportScrollTimeoutRef.current);
       }
-      
+
       airportScrollTimeoutRef.current = setTimeout(() => {
         setIsAirportScrolling(false);
       }, 1000);
     };
-    
-    scrollContainer.addEventListener('scroll', handleScroll);
-    
+
+    scrollContainer.addEventListener("scroll", handleScroll);
+
     return () => {
-      scrollContainer.removeEventListener('scroll', handleScroll);
+      scrollContainer.removeEventListener("scroll", handleScroll);
       if (airportScrollTimeoutRef.current) {
         clearTimeout(airportScrollTimeoutRef.current);
       }
@@ -103,23 +101,23 @@ export default function Sidebar({
   useEffect(() => {
     const scrollContainer = categoryListRef.current;
     if (!scrollContainer) return;
-    
+
     const handleScroll = () => {
       setIsCategoryScrolling(true);
-      
+
       if (categoryScrollTimeoutRef.current) {
         clearTimeout(categoryScrollTimeoutRef.current);
       }
-      
+
       categoryScrollTimeoutRef.current = setTimeout(() => {
         setIsCategoryScrolling(false);
       }, 1000);
     };
-    
-    scrollContainer.addEventListener('scroll', handleScroll);
-    
+
+    scrollContainer.addEventListener("scroll", handleScroll);
+
     return () => {
-      scrollContainer.removeEventListener('scroll', handleScroll);
+      scrollContainer.removeEventListener("scroll", handleScroll);
       if (categoryScrollTimeoutRef.current) {
         clearTimeout(categoryScrollTimeoutRef.current);
       }
@@ -134,7 +132,11 @@ export default function Sidebar({
           <button
             onClick={() => {
               // Close chart list if open before opening airport dropdown
-              if (!isAirportDropdownOpen && selectedCategory && onCloseCategory) {
+              if (
+                !isAirportDropdownOpen &&
+                selectedCategory &&
+                onCloseCategory
+              ) {
                 onCloseCategory();
               }
               setIsAirportDropdownOpen(!isAirportDropdownOpen);
@@ -143,7 +145,9 @@ export default function Sidebar({
             title={selectedAirport}
           >
             <span className="font-bold text-xs">{selectedAirport}</span>
-            <ChevronDown className={`w-3 h-3 mt-1 transition-transform ${isAirportDropdownOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown
+              className={`w-3 h-3 mt-1 transition-transform ${isAirportDropdownOpen ? "rotate-180" : ""}`}
+            />
           </button>
 
           {/* Airport Dropdown */}
@@ -153,10 +157,13 @@ export default function Sidebar({
                 className="fixed inset-0 z-10"
                 onClick={() => {
                   setIsAirportDropdownOpen(false);
-                  setSearchQuery('');
+                  setSearchQuery("");
                 }}
               />
-              <div className="absolute left-full top-0 ml-2 w-64 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl z-20 flex flex-col" style={{ maxHeight: '24rem' }}>
+              <div
+                className="absolute left-full top-0 ml-2 w-64 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl z-20 flex flex-col"
+                style={{ maxHeight: "24rem" }}
+              >
                 {/* Search Box */}
                 <div className="p-3 border-b border-gray-300 dark:border-gray-700 flex-shrink-0">
                   <div className="relative">
@@ -171,21 +178,21 @@ export default function Sidebar({
                     />
                   </div>
                 </div>
-                
+
                 {/* Airport List */}
-                <div 
+                <div
                   ref={airportListRef}
-                  className={`flex-1 overflow-y-auto auto-hide-scrollbar ${isAirportScrolling ? 'scrolling' : ''}`}
+                  className={`flex-1 overflow-y-auto auto-hide-scrollbar ${isAirportScrolling ? "scrolling" : ""}`}
                 >
                   {filteredAirports.length > 0 ? (
-                    filteredAirports.map(airport => (
+                    filteredAirports.map((airport) => (
                       <button
                         key={airport}
                         onClick={() => handleAirportSelect(airport)}
                         className={`w-full px-4 py-3 text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
                           airport === selectedAirport
-                            ? 'bg-blue-500 text-white'
-                            : 'text-gray-700 dark:text-gray-300'
+                            ? "bg-blue-500 text-white"
+                            : "text-gray-700 dark:text-gray-300"
                         }`}
                       >
                         {airport}
@@ -204,12 +211,12 @@ export default function Sidebar({
       </div>
 
       {/* Categories - Vertical compact buttons */}
-      <div 
+      <div
         ref={categoryListRef}
-        className={`flex-1 overflow-y-auto py-2 auto-hide-scrollbar ${isCategoryScrolling ? 'scrolling' : ''}`}
+        className={`flex-1 overflow-y-auto py-2 auto-hide-scrollbar ${isCategoryScrolling ? "scrolling" : ""}`}
       >
         <div className="space-y-1 px-2">
-          {CATEGORY_ORDER.map(category => {
+          {CATEGORY_ORDER.map((category) => {
             const count = categoryCounts[category] || 0;
             const isDisabled = count === 0;
             const displayName = CATEGORY_NAMES[category];
@@ -222,17 +229,15 @@ export default function Sidebar({
                 title={`${category} (${count})`}
                 className={`w-full py-3 rounded text-center font-bold transition-colors text-xs ${
                   selectedCategory === category
-                    ? 'bg-blue-500 text-white shadow-lg'
+                    ? "bg-blue-500 text-white shadow-lg"
                     : isDisabled
-                    ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed bg-gray-200 dark:bg-gray-800 opacity-50'
-                    : 'text-gray-900 dark:text-white bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700'
+                      ? "text-gray-400 dark:text-gray-600 cursor-not-allowed bg-gray-200 dark:bg-gray-800 opacity-50"
+                      : "text-gray-900 dark:text-white bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700"
                 }`}
               >
                 {displayName}
                 {count > 0 && (
-                  <div className="text-[10px] mt-1 opacity-80">
-                    {count}
-                  </div>
+                  <div className="text-[10px] mt-1 opacity-80">{count}</div>
                 )}
               </button>
             );
@@ -246,7 +251,7 @@ export default function Sidebar({
         <div className="w-full flex justify-center">
           <ThemeToggle />
         </div>
-        
+
         {/* Settings button */}
         {onOpenSettings && (
           <button
@@ -258,7 +263,7 @@ export default function Sidebar({
             <Settings className="w-5 h-5" />
           </button>
         )}
-        
+
         {/* Mobile close button */}
         {onClose && (
           <button
@@ -273,4 +278,3 @@ export default function Sidebar({
     </div>
   );
 }
-

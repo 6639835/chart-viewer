@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { X, RefreshCw, AlertCircle, ExternalLink } from 'lucide-react';
-import type { UpdateInfo } from '@/types/electron';
+import { useEffect, useState } from "react";
+import { X, RefreshCw, AlertCircle, ExternalLink } from "lucide-react";
+import type { UpdateInfo } from "@/types/electron";
 
 export default function UpdateNotification() {
   const [checking, setChecking] = useState(false);
@@ -12,7 +12,7 @@ export default function UpdateNotification() {
 
   useEffect(() => {
     // Only run in Electron environment
-    if (typeof window === 'undefined' || !window.electronAPI?.updater) {
+    if (typeof window === "undefined" || !window.electronAPI?.updater) {
       return;
     }
 
@@ -20,25 +20,27 @@ export default function UpdateNotification() {
 
     // Set up event listeners
     const cleanupChecking = updater.onChecking(() => {
-      console.log('Checking for updates...');
+      console.log("Checking for updates...");
       setChecking(true);
       setError(null);
     });
 
     const cleanupAvailable = updater.onUpdateAvailable((info: UpdateInfo) => {
-      console.log('Update available:', info);
+      console.log("Update available:", info);
       setChecking(false);
       setUpdateInfo(info);
       setDismissed(false);
     });
 
-    const cleanupNotAvailable = updater.onUpdateNotAvailable((info: UpdateInfo) => {
-      console.log('No updates available. Current version:', info.version);
-      setChecking(false);
-    });
+    const cleanupNotAvailable = updater.onUpdateNotAvailable(
+      (info: UpdateInfo) => {
+        console.log("No updates available. Current version:", info.version);
+        setChecking(false);
+      }
+    );
 
     const cleanupError = updater.onError((errorMsg: string) => {
-      console.error('Update error:', errorMsg);
+      console.error("Update error:", errorMsg);
       setChecking(false);
       setError(errorMsg);
     });
@@ -59,11 +61,11 @@ export default function UpdateNotification() {
 
   const handleOpenRelease = () => {
     const releaseUrl = `https://github.com/6639835/chart-viewer/releases/latest`;
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       if (window.electronAPI) {
         window.electronAPI.openExternal(releaseUrl);
       } else {
-        window.open(releaseUrl, '_blank', 'noopener,noreferrer');
+        window.open(releaseUrl, "_blank", "noopener,noreferrer");
       }
     }
   };
@@ -82,10 +84,12 @@ export default function UpdateNotification() {
             {error ? (
               <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
             ) : (
-              <RefreshCw className={`w-5 h-5 text-blue-500 flex-shrink-0 ${checking ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`w-5 h-5 text-blue-500 flex-shrink-0 ${checking ? "animate-spin" : ""}`}
+              />
             )}
             <h3 className="font-semibold text-gray-900 dark:text-white">
-              {error ? '更新检查错误' : '新版本可用'}
+              {error ? "更新检查错误" : "新版本可用"}
             </h3>
           </div>
           <button
@@ -115,7 +119,9 @@ export default function UpdateNotification() {
           ) : (
             <>
               <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
-                版本 <span className="font-semibold">{updateInfo?.version}</span> 现已可用
+                版本{" "}
+                <span className="font-semibold">{updateInfo?.version}</span>{" "}
+                现已可用
                 {updateInfo?.releaseNotes && (
                   <span className="block mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
                     {updateInfo.releaseNotes}
@@ -136,4 +142,3 @@ export default function UpdateNotification() {
     </div>
   );
 }
-

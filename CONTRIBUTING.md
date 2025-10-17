@@ -38,17 +38,20 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 ### Installation
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/6639835/chart-viewer.git
    cd chart-viewer
    ```
 
 2. Install dependencies:
+
    ```bash
    npm install
    ```
 
 3. Start the development server:
+
    ```bash
    npm run dev
    ```

@@ -1,8 +1,8 @@
-import { promises as fs } from 'fs';
-import path from 'path';
-import { AppConfig, DEFAULT_CONFIG } from '@/types/config';
+import { promises as fs } from "fs";
+import path from "path";
+import { AppConfig, DEFAULT_CONFIG } from "@/types/config";
 
-const CONFIG_FILE = 'config.json';
+const CONFIG_FILE = "config.json";
 
 // Get config file path - use USER_DATA_PATH in Electron or cwd in web mode
 function getConfigPath(): string {
@@ -17,9 +17,9 @@ function getConfigPath(): string {
 export async function getConfig(): Promise<AppConfig> {
   try {
     const configPath = getConfigPath();
-    const configContent = await fs.readFile(configPath, 'utf-8');
+    const configContent = await fs.readFile(configPath, "utf-8");
     const config = JSON.parse(configContent);
-    
+
     // Merge with defaults to ensure all fields exist
     return {
       ...DEFAULT_CONFIG,
@@ -33,7 +33,7 @@ export async function getConfig(): Promise<AppConfig> {
 
 export async function saveConfig(config: AppConfig): Promise<void> {
   const configPath = getConfigPath();
-  
+
   // Ensure directory exists
   const configDir = path.dirname(configPath);
   try {
@@ -41,32 +41,34 @@ export async function saveConfig(config: AppConfig): Promise<void> {
   } catch (error) {
     // Directory might already exist, that's ok
   }
-  
-  await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+
+  await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
 }
 
-export async function validateDirectory(dirPath: string): Promise<{ valid: boolean; absolutePath?: string; error?: string }> {
+export async function validateDirectory(
+  dirPath: string
+): Promise<{ valid: boolean; absolutePath?: string; error?: string }> {
   try {
     // Convert to absolute path if relative
-    const absolutePath = path.isAbsolute(dirPath) 
-      ? dirPath 
+    const absolutePath = path.isAbsolute(dirPath)
+      ? dirPath
       : path.join(process.cwd(), dirPath);
-    
+
     // Check if directory exists
     const stats = await fs.stat(absolutePath);
-    
+
     if (!stats.isDirectory()) {
-      return { valid: false, error: 'Path is not a directory' };
+      return { valid: false, error: "Path is not a directory" };
     }
-    
+
     // Check read permissions
     await fs.access(absolutePath, fs.constants.R_OK);
-    
+
     return { valid: true, absolutePath };
   } catch (error) {
-    return { 
-      valid: false, 
-      error: error instanceof Error ? error.message : 'Invalid directory path' 
+    return {
+      valid: false,
+      error: error instanceof Error ? error.message : "Invalid directory path",
     };
   }
 }

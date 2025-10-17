@@ -16,7 +16,7 @@ A modern Electronic Flight Bag (EFB) style chart viewer for aviation charts.
 
 - **STAR**: Standard Terminal Arrival Routes (标准仪表进场图)
 - **APP**: Approach Procedures (仪表进近图)
-- **TAXI**: Airport Taxi Charts (机场图_停机位置图)
+- **TAXI**: Airport Taxi Charts (机场图\_停机位置图)
 - **SID**: Standard Instrument Departures (标准仪表离场图)
 - **OTHER**: Other charts (其他, 机场障碍物图等)
 - **细则**: Airport Regulations (机场细则)
@@ -25,7 +25,7 @@ A modern Electronic Flight Bag (EFB) style chart viewer for aviation charts.
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - npm or yarn
 
 ### Installation
@@ -41,6 +41,7 @@ npm run generate-icons
 ### Running the Development Server
 
 #### Web Mode (Browser)
+
 ```bash
 npm run dev
 ```
@@ -48,6 +49,7 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 #### Desktop Mode (Electron)
+
 ```bash
 npm run electron:dev
 ```
@@ -72,12 +74,14 @@ Configuration is saved to `config.json` in the project root.
 ### Building for Production
 
 #### Web Version
+
 ```bash
 npm run build
 npm start
 ```
 
 #### Desktop Application (Local Build)
+
 ```bash
 # Build for macOS
 npm run electron:build:mac
@@ -96,6 +100,7 @@ Built applications will be in the `dist/` directory.
 The project includes GitHub Actions workflows for automated cross-platform builds:
 
 **Creating a Release:**
+
 ```bash
 # Interactive release tool
 npm run release
@@ -106,17 +111,20 @@ git push --tags
 ```
 
 **Build Triggers:**
+
 - **Stable releases**: Push tags like `v1.0.0` → Creates GitHub Release with installers
 - **Pre-releases**: Push tags like `v1.0.0-beta.1` → Creates pre-release
 - **Manual**: Trigger builds from GitHub Actions tab
 - **Pull Requests**: Automatic build verification (no release)
 
 **Supported Platforms:**
+
 - **macOS**: DMG installer + ZIP archive
 - **Windows**: NSIS installer + Portable executable
 - **Linux**: AppImage + DEB package
 
 **Download Options:**
+
 - Artifacts available in GitHub Actions (7-14 days)
 - Releases published at: `https://github.com/6639835/chart-viewer/releases`
 
@@ -131,6 +139,7 @@ xattr -cr "/Applications/Chart Viewer.app"
 ```
 
 **Alternative methods:**
+
 1. **Right-click method**: Right-click the app → Open → Click "Open" in the security dialog
 2. **System Settings**: Go to System Settings → Privacy & Security → Allow the app to run
 
@@ -185,6 +194,7 @@ The application reads chart metadata from `csv/Charts.csv` with the following st
 The application **automatically detects** and supports two directory formats for chart PDFs:
 
 #### Format 1: Flat Structure (All charts in one directory)
+
 ```
 charts/
   ├── ZBAA-AD2-ZBAA-1-1.pdf
@@ -194,6 +204,7 @@ charts/
 ```
 
 #### Format 2: Nested Structure (Organized by airport)
+
 ```
 charts/
   ├── ZBAA/
@@ -230,4 +241,3 @@ Copyright (c) 2025 Justin
 ---
 
 Made with ❤️ for aviation enthusiasts
-

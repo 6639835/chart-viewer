@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import packageJson from '@/package.json';
+import { NextResponse } from "next/server";
+import packageJson from "@/package.json";
 
 export async function GET() {
   try {
@@ -11,9 +11,8 @@ export async function GET() {
     });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: 'Failed to get version' },
+      { success: false, error: "Failed to get version" },
       { status: 500 }
     );
   }
 }
-

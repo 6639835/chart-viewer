@@ -1,11 +1,11 @@
-import type { Metadata } from 'next';
-import './globals.css';
-import { ThemeProvider } from '@/components/ThemeProvider';
-import UpdateNotification from '@/components/UpdateNotification';
+import type { Metadata } from "next";
+import "./globals.css";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import UpdateNotification from "@/components/UpdateNotification";
 
 export const metadata: Metadata = {
-  title: 'Chart Viewer - EFB',
-  description: 'Electronic Flight Bag Chart Viewer',
+  title: "Chart Viewer - EFB",
+  description: "Electronic Flight Bag Chart Viewer",
 };
 
 export default function RootLayout({
@@ -24,4 +24,3 @@ export default function RootLayout({
     </html>
   );
 }
-
