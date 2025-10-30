@@ -89,13 +89,13 @@ export default function UpdateNotification() {
               />
             )}
             <h3 className="font-semibold text-gray-900 dark:text-white">
-              {error ? "更新检查错误" : "新版本可用"}
+              {error ? "Update Check Failed" : "New Update Available"}
             </h3>
           </div>
           <button
             onClick={handleDismiss}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-            aria-label="关闭"
+            aria-label="Close"
           >
             <X className="w-4 h-4" />
           </button>
@@ -110,18 +110,18 @@ export default function UpdateNotification() {
               </p>
               <button
                 onClick={handleOpenRelease}
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
               >
                 <ExternalLink className="w-4 h-4" />
-                前往 GitHub 查看更新
+                Check for Updates on GitHub
               </button>
             </>
           ) : (
             <>
               <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
-                版本{" "}
-                <span className="font-semibold">{updateInfo?.version}</span>{" "}
-                现已可用
+                Version{" "}
+                <span className="font-semibold">{updateInfo?.version}</span> is
+                now available
                 {updateInfo?.releaseNotes && (
                   <span className="block mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
                     {updateInfo.releaseNotes}
@@ -130,10 +130,10 @@ export default function UpdateNotification() {
               </p>
               <button
                 onClick={handleOpenRelease}
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
               >
                 <ExternalLink className="w-4 h-4" />
-                前往 GitHub 下载更新
+                Download Update on GitHub
               </button>
             </>
           )}

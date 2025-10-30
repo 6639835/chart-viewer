@@ -21,6 +21,28 @@
 
 ---
 
+## [1.3.3] - 2025-10-30
+
+### 变更
+
+- **UI 一致性优化**：统一整个应用的界面设计风格
+  - 标准化按钮悬停状态：所有按钮使用统一的悬停颜色（`hover:bg-gray-200 dark:hover:bg-gray-800`）
+  - 统一按钮圆角样式：所有交互按钮使用 `rounded-lg` 圆角
+  - 语言一致性改进：将所有界面文本统一为英文
+- **ThemeToggle 组件**：
+  - 工具提示从中文改为英文（"Switch to Light Mode" / "Switch to Dark Mode"）
+  - 按钮圆角从 `rounded` 改为 `rounded-lg`，与其他按钮保持一致
+- **UpdateNotification 组件**：
+  - 所有界面文本从中文改为英文
+  - 标题文本：`"新版本可用"` → `"New Update Available"`，`"更新检查错误"` → `"Update Check Failed"`
+  - 按钮文本：`"前往 GitHub 下载更新"` → `"Download Update on GitHub"`
+  - 按钮圆角从 `rounded-md` 改为 `rounded-lg`
+- **SettingsModal 组件**：
+  - 标准化 4 个按钮的悬停状态（关闭按钮、父目录按钮、子目录按钮、取消按钮）
+  - 所有按钮悬停效果现在一致
+
+---
+
 ## [1.3.2] - 2025-10-17
 
 ### 新增
@@ -758,7 +780,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.3.2...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/6639835/chart-viewer/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/6639835/chart-viewer/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/6639835/chart-viewer/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/6639835/chart-viewer/compare/v1.2.2...v1.3.0

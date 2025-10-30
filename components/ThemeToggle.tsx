@@ -16,7 +16,7 @@ export default function ThemeToggle() {
   if (!mounted) {
     return (
       <button
-        className="p-2 rounded-lg bg-gray-200 dark:bg-gray-800 transition-colors"
+        className="p-2 rounded-lg text-gray-900 dark:text-white transition-colors"
         disabled
       >
         <div className="w-5 h-5" />
@@ -27,14 +27,14 @@ export default function ThemeToggle() {
   return (
     <button
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      className="p-2 rounded-lg bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors"
-      title={theme === "dark" ? "切换到亮色模式" : "切换到暗色模式"}
+      className="p-2 rounded-lg text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
+      title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
       aria-label="Toggle theme"
     >
       {theme === "dark" ? (
-        <Sun className="w-5 h-5 text-yellow-400" />
+        <Sun className="w-5 h-5" />
       ) : (
-        <Moon className="w-5 h-5 text-gray-700" />
+        <Moon className="w-5 h-5" />
       )}
     </button>
   );

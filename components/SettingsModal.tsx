@@ -217,23 +217,23 @@ export default function SettingsModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col m-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
             Settings
           </h2>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
           >
             <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
@@ -278,7 +278,7 @@ export default function SettingsModal({
                   {directoryInfo.parentPath && (
                     <button
                       onClick={() => browseDirectory(directoryInfo.parentPath!)}
-                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors text-left"
                     >
                       <ChevronLeft className="w-5 h-5 text-gray-400" />
                       <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
@@ -309,7 +309,7 @@ export default function SettingsModal({
                       <button
                         key={dir.path}
                         onClick={() => browseDirectory(dir.path)}
-                        className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
+                        className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors text-left"
                       >
                         <FolderOpen className="w-5 h-5 text-blue-500" />
                         <span className="text-sm text-gray-900 dark:text-white flex-1">
@@ -344,14 +344,15 @@ export default function SettingsModal({
                       setConfig({ ...config, chartsDirectory: e.target.value })
                     }
                     placeholder="charts"
-                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="flex-1 min-w-0 px-3 sm:px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                   />
                   <button
                     onClick={() => handleBrowseClick("chartsDirectory")}
-                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-2"
+                    className="px-3 sm:px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-2 flex-shrink-0"
+                    title="Browse"
                   >
-                    <FolderOpen className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                    <FolderOpen className="w-5 h-5 text-gray-600 dark:text-gray-300 flex-shrink-0" />
+                    <span className="hidden sm:inline text-sm font-medium text-gray-700 dark:text-gray-200">
                       Browse
                     </span>
                   </button>
@@ -374,14 +375,15 @@ export default function SettingsModal({
                       setConfig({ ...config, csvDirectory: e.target.value })
                     }
                     placeholder="csv"
-                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="flex-1 min-w-0 px-3 sm:px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                   />
                   <button
                     onClick={() => handleBrowseClick("csvDirectory")}
-                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-2"
+                    className="px-3 sm:px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-2 flex-shrink-0"
+                    title="Browse"
                   >
-                    <FolderOpen className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                    <FolderOpen className="w-5 h-5 text-gray-600 dark:text-gray-300 flex-shrink-0" />
+                    <span className="hidden sm:inline text-sm font-medium text-gray-700 dark:text-gray-200">
                       Browse
                     </span>
                   </button>
@@ -392,22 +394,22 @@ export default function SettingsModal({
               </div>
 
               {/* Info Box */}
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
-                <div className="flex gap-3">
-                  <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-blue-900 dark:text-blue-100">
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3 sm:p-4">
+                <div className="flex gap-2 sm:gap-3">
+                  <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs sm:text-sm text-blue-900 dark:text-blue-100 min-w-0">
                     <p className="font-medium mb-1">Path Format:</p>
                     <ul className="list-disc list-inside space-y-1 text-blue-800 dark:text-blue-200">
-                      <li>
+                      <li className="break-words">
                         Use relative paths (e.g.,{" "}
-                        <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">
+                        <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded break-all">
                           charts
                         </code>
                         ) or
                       </li>
-                      <li>
+                      <li className="break-words">
                         Use absolute paths (e.g.,{" "}
-                        <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">
+                        <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded break-all">
                           /Users/name/data/charts
                         </code>
                         )
@@ -471,18 +473,18 @@ export default function SettingsModal({
 
         {/* Footer */}
         {!browsing && (
-          <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 p-4 sm:p-6 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
             <button
               onClick={onClose}
               disabled={saving}
-              className="px-6 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50"
+              className="px-4 sm:px-6 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 text-sm sm:text-base"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
               disabled={saving || success}
-              className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+              className="px-4 sm:px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base"
             >
               {saving ? (
                 <>
