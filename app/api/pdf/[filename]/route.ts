@@ -7,6 +7,7 @@ import { getConfig } from "@/lib/configManager";
  * Finds PDF file in either format:
  * - Format 1 (flat): charts/ZBAA-AD2-ZBAA-1-1.pdf
  * - Format 2 (nested): charts/ZBAA/ZBAA-AD2-ZBAA-1-1.pdf
+ * - Format 3 (nested, non-ICAO names): charts/ZBAA/北京首都.pdf
  */
 async function findPdfPath(
   chartsDir: string,
@@ -34,9 +35,30 @@ async function findPdfPath(
     await fs.access(flatPath);
     return flatPath;
   } catch {
-    // File not found in either format
-    return null;
+    // File not found in flat format
   }
+
+  // For files without ICAO prefix (like 机场细则 "北京首都.pdf"),
+  // search in all ICAO subdirectories
+  try {
+    const entries = await fs.readdir(chartsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const nestedPath = path.join(chartsDir, entry.name, filename);
+        try {
+          await fs.access(nestedPath);
+          return nestedPath;
+        } catch {
+          // Continue searching in other directories
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error scanning directories:', error);
+  }
+
+  // File not found in any format
+  return null;
 }
 
 export async function GET(

@@ -21,6 +21,29 @@
 
 ---
 
+## [1.4.0] - 2025-11-15
+
+### 修复
+
+- **修复中文文件名 PDF 加载失败问题**：解决机场细则等中文命名图表无法加载的关键问题
+  - 修复 PDF API 路由对非 ICAO 格式文件名（如"北京首都.pdf"）的查找逻辑
+  - 原有查找机制仅支持 ICAO-前缀格式（如"ZBAA-2A.pdf"），无法定位中文文件名
+  - 新增回退搜索机制：当标准匹配失败时，自动遍历所有机场子目录查找文件
+  - 支持三种文件组织格式：
+    - 扁平结构：`charts/filename.pdf`
+    - ICAO 嵌套结构：`charts/ZBAA/ZBAA-2A.pdf`
+    - 中文文件名嵌套结构：`charts/ZBAA/北京首都.pdf`
+  - 确保所有类型的图表文件都能正确加载，无论文件名格式如何
+
+### 变更
+
+- **优化 PDF 文件查找算法**：改进文件定位逻辑的鲁棒性和容错性
+  - 查找顺序：ICAO 前缀匹配 → 扁平目录 → 遍历所有子目录
+  - 提升对不同文件组织方式的兼容性
+  - 改善错误处理和日志记录
+
+---
+
 ## [1.3.3] - 2025-10-30
 
 ### 变更
@@ -780,7 +803,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.3.3...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/6639835/chart-viewer/compare/v1.3.3...v1.4.0
 [1.3.3]: https://github.com/6639835/chart-viewer/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/6639835/chart-viewer/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/6639835/chart-viewer/compare/v1.3.0...v1.3.1
