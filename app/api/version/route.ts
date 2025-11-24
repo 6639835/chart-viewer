@@ -9,7 +9,7 @@ export async function GET() {
       name: packageJson.name,
       author: packageJson.author,
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { success: false, error: "Failed to get version" },
       { status: 500 }

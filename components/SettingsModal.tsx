@@ -90,7 +90,7 @@ export default function SettingsModal({
       } else {
         setError("Failed to load configuration");
       }
-    } catch (err) {
+    } catch {
       setError("Error loading configuration");
     } finally {
       setLoading(false);
@@ -111,7 +111,7 @@ export default function SettingsModal({
       } else {
         setError(data.error);
       }
-    } catch (err) {
+    } catch {
       setError("Error browsing directory");
     } finally {
       setBrowseLoading(false);
@@ -135,7 +135,7 @@ export default function SettingsModal({
         if (path) {
           setConfig((prev) => ({ ...prev, [field]: path }));
         }
-      } catch (err) {
+      } catch {
         setError("Error selecting directory");
       }
       return;
@@ -180,7 +180,7 @@ export default function SettingsModal({
           data.error + (data.details ? ": " + data.details.join(", ") : "")
         );
       }
-    } catch (err) {
+    } catch {
       setError("Error saving configuration");
     } finally {
       setSaving(false);

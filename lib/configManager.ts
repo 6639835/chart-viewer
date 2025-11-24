@@ -25,7 +25,7 @@ export async function getConfig(): Promise<AppConfig> {
       ...DEFAULT_CONFIG,
       ...config,
     };
-  } catch (error) {
+  } catch {
     // If config doesn't exist or is invalid, return defaults
     return { ...DEFAULT_CONFIG };
   }
@@ -38,7 +38,7 @@ export async function saveConfig(config: AppConfig): Promise<void> {
   const configDir = path.dirname(configPath);
   try {
     await fs.mkdir(configDir, { recursive: true });
-  } catch (error) {
+  } catch {
     // Directory might already exist, that's ok
   }
 

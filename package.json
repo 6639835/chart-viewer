@@ -107,6 +107,8 @@
     "cross-env": "^10.1.0",
     "electron": "^38.2.1",
     "electron-builder": "^26.0.12",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.33",
     "png-to-ico": "^3.0.1",
     "postcss": "^8.4.38",
     "prettier": "^3.6.2",

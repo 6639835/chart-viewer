@@ -27,7 +27,7 @@ async function detectFormat(csvDir: string): Promise<'old' | 'new'> {
     }
 
     return 'new';
-  } catch (error) {
+  } catch {
     // If Charts.csv doesn't exist, assume new format
     return 'new';
   }
@@ -63,7 +63,7 @@ async function loadNewFormat(csvDir: string): Promise<ChartData[]> {
 
       const charts = parsePerAirportCSV(csvContent, airportIcao);
       allCharts.push(...charts);
-    } catch (error) {
+    } catch {
       // Skip directories without Charts.csv
       console.warn(`No Charts.csv found for airport: ${airportIcao}`);
     }

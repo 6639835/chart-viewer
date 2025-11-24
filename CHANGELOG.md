@@ -21,6 +21,20 @@
 
 ---
 
+## [1.5.1] - 2025-11-24
+
+### 修复
+
+- **修复 ESLint 代码规范问题**：解决所有 TypeScript/ESLint 警告和错误
+  - 移除未使用的 error 变量（7 处，涉及 API 路由和配置管理）
+  - 移除未使用的 err 变量（4 处，涉及设置模态框）
+  - 移除未使用的 containerWidth 和 paddingX 变量（PDF 查看器）
+  - 移除未使用的 suffixAlreadyAdded 变量（图表格式化器）
+  - 修复 any 类型使用：使用正确的 PDFPageProxy 类型替代 any 类型
+  - 所有文件通过 ESLint 严格检查，无警告无错误
+
+---
+
 ## [1.5.0] - 2025-11-24
 
 ### 新增
@@ -837,7 +851,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.5.0...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/6639835/chart-viewer/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/6639835/chart-viewer/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/6639835/chart-viewer/compare/v1.3.3...v1.4.0
 [1.3.3]: https://github.com/6639835/chart-viewer/compare/v1.3.2...v1.3.3

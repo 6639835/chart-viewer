@@ -25,7 +25,10 @@ export function parseCSV(csvContent: string): ChartData[] {
   });
 }
 
-export function parsePerAirportCSV(csvContent: string, airportIcao: string): ChartData[] {
+export function parsePerAirportCSV(
+  csvContent: string,
+  airportIcao: string
+): ChartData[] {
   const result = Papa.parse<PerAirportChartData>(csvContent, {
     header: true,
     skipEmptyLines: true,

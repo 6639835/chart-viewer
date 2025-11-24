@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
+import type { PDFPageProxy } from "pdfjs-dist";
 import {
   ChevronLeft,
   ChevronRight,
@@ -44,7 +45,6 @@ export default function PDFViewer({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [autoFit, setAutoFit] = useState<boolean>(true);
-  const [containerWidth, setContainerWidth] = useState<number>(0);
   const [containerHeight, setContainerHeight] = useState<number>(0);
   const [pageWidth, setPageWidth] = useState<number>(0); // Original PDF page width at scale 1.0
   const [pageHeight, setPageHeight] = useState<number>(0); // Original PDF page height at scale 1.0
@@ -73,11 +73,8 @@ export default function PDFViewer({
     const updateDimensions = () => {
       if (containerRef.current) {
         // Account for padding: mobile (8px), tablet/desktop (16px)
-        const paddingX = window.innerWidth < 640 ? 16 : 32; // 2 * (p-2 or p-4)
         const paddingY = window.innerWidth < 640 ? 16 : 32;
-        const newWidth = containerRef.current.clientWidth - paddingX;
         const newHeight = containerRef.current.clientHeight - paddingY;
-        setContainerWidth(newWidth);
         setContainerHeight(newHeight);
 
         // Recalculate autoFitScale when container size changes
@@ -260,7 +257,7 @@ export default function PDFViewer({
   }
 
   // Callback when a page finishes rendering - capture original dimensions
-  function onPageLoadSuccess(page: any) {
+  function onPageLoadSuccess(page: PDFPageProxy) {
     // Get viewport at scale 1.0 to get original dimensions
     const viewport = page.getViewport({ scale: 1.0 });
     setPageWidth(viewport.width);

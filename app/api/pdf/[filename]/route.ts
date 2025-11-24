@@ -54,7 +54,7 @@ async function findPdfPath(
       }
     }
   } catch (error) {
-    console.error('Error scanning directories:', error);
+    console.error("Error scanning directories:", error);
   }
 
   // File not found in any format

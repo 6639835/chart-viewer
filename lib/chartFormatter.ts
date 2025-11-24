@@ -167,8 +167,6 @@ export function formatAppChartName(chartName: string): string {
       formatted = `RNP${suffix} (AR)`.trim();
       // Mark that suffix is already added
       formatted = formatted.replace(/\s+/g, " ");
-      // Skip adding suffix later
-      const suffixAlreadyAdded = true;
     } else {
       formatted = "RNP";
     }
