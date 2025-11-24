@@ -3,6 +3,8 @@ import {
   GroupedCharts,
   CHART_TYPE_MAPPING,
   ChartCategory,
+  PerAirportChartData,
+  AirportInfo,
 } from "@/types/chart";
 import Papa from "papaparse";
 
@@ -21,6 +23,59 @@ export function parseCSV(csvContent: string): ChartData[] {
     }
     return !!row.PAGE_NUMBER;
   });
+}
+
+export function parsePerAirportCSV(csvContent: string, airportIcao: string): ChartData[] {
+  const result = Papa.parse<PerAirportChartData>(csvContent, {
+    header: true,
+    skipEmptyLines: true,
+  });
+
+  // Convert per-airport format to standard ChartData format
+  return result.data
+    .filter((row: PerAirportChartData) => {
+      // 机场细则 doesn't have PAGE_NUMBER, but has ChartName
+      if (row.ChartTypeEx_CH === "机场细则") {
+        return !!row.ChartName;
+      }
+      return !!row.PAGE_NUMBER;
+    })
+    .map((row: PerAirportChartData) => {
+      // Generate a unique ChartId based on airport ICAO and PAGE_NUMBER
+      // For 机场细则 without PAGE_NUMBER, use ChartName
+      const uniqueId = row.PAGE_NUMBER
+        ? `${airportIcao}-${row.PAGE_NUMBER}`
+        : `${airportIcao}-${row.ChartName}`;
+
+      return {
+        ChartId: uniqueId,
+        AirportIcao: airportIcao,
+        AirportIata: "",
+        CityName: "",
+        AirportName: "",
+        ValidFrom: "",
+        ValidUntil: "",
+        FilePath: "",
+        ChartName: row.ChartName,
+        FileSize: "",
+        ChartTypeEx_CH: row.ChartTypeEx_CH,
+        MD5: "",
+        AD_HP_ID: "",
+        PAGE_NUMBER: row.PAGE_NUMBER,
+        IS_SUP: row.IS_SUP === "True" ? "Y" : "N",
+        SUP_REF_CHARTID: "",
+        IS_MODIFIED: row.IsModify === "True" ? "Y" : "N",
+      };
+    });
+}
+
+export function parseAirportsCSV(csvContent: string): AirportInfo[] {
+  const result = Papa.parse<AirportInfo>(csvContent, {
+    header: true,
+    skipEmptyLines: true,
+  });
+
+  return result.data.filter((row: AirportInfo) => !!row.CODE_ID);
 }
 
 export function groupChartsByAirport(charts: ChartData[]): GroupedCharts {

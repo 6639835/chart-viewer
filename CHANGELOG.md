@@ -21,6 +21,40 @@
 
 ---
 
+## [1.5.0] - 2025-11-24
+
+### 新增
+
+- **支持新的图表数据格式**：自动识别并支持两种 CSV 数据组织方式
+  - 传统格式：单一 Charts.csv 文件包含所有机场图表数据
+  - 新格式：按机场分目录，每个机场目录下有独立的 Charts.csv
+  - 自动格式检测，无需手动配置
+  - 完美向后兼容旧格式数据
+
+### 变更
+
+- **优化图表数据加载逻辑**：改进 CSV 解析和数据处理流程
+  - 新增 `parsePerAirportCSV()` 函数解析新格式数据
+  - 新增 `parseAirportsCSV()` 函数解析机场信息
+  - 统一数据结构，新旧格式输出相同的 ChartData 格式
+- **改进格式检测算法**：智能识别数据目录格式
+  - 检测 Charts.csv 内容判断是否为新格式
+  - 新格式自动遍历机场目录加载所有图表
+  - 提供详细日志便于排查问题
+- **字段映射优化**：新格式字段自动转换为标准格式
+  - `IS_SUP: "True"/"False"` → `"Y"/"N"`
+  - `IsModify: "True"/"False"` → `IS_MODIFIED: "Y"/"N"`
+
+### 修复
+
+- **修复图表书签功能**：解决新格式下所有图表被错误标记为收藏的问题
+  - 为新格式数据生成唯一 ChartId（基于机场代码和页码）
+  - ChartId 格式：`{AirportIcao}-{PAGE_NUMBER}` 或 `{AirportIcao}-{ChartName}`
+  - 确保每个图表都有唯一标识符，书签系统正常工作
+  - 保持与旧格式 ChartId 结构的一致性
+
+---
+
 ## [1.4.0] - 2025-11-15
 
 ### 修复
@@ -803,7 +837,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.4.0...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/6639835/chart-viewer/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/6639835/chart-viewer/compare/v1.3.3...v1.4.0
 [1.3.3]: https://github.com/6639835/chart-viewer/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/6639835/chart-viewer/compare/v1.3.1...v1.3.2

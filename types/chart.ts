@@ -18,6 +18,20 @@ export interface ChartData {
   IS_MODIFIED: string;
 }
 
+export interface PerAirportChartData {
+  ChartName: string;
+  PAGE_NUMBER: string;
+  ChartTypeEx_CH: string;
+  IS_SUP: string;
+  IsModify: string;
+}
+
+export interface AirportInfo {
+  CODE_ID: string;
+  TXT_NAME: string;
+  BUREAU_NAME: string;
+}
+
 export type ChartCategory = "STAR" | "APP" | "TAXI" | "SID" | "OTHER" | "细则";
 
 export interface GroupedCharts {
