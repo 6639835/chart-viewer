@@ -21,6 +21,32 @@
 
 ---
 
+## [1.5.2] - 2025-11-26
+
+### 修复
+
+- **支持新的 CSV 图表名称格式**：兼容已格式化的图表名称
+  - 旧格式（无空格）：`RNPILSDMEzRW24`、`RNAVRWY0136L`
+  - 新格式（有空格）：`RNP ILS/DME z RW24`、`RNAV RWY 01/36L`
+  - 自动检测图表名称格式，智能选择处理方式
+  - 新格式数据直接使用，仅做必要的清理和标准化
+  - 旧格式数据继续使用原有格式化逻辑
+  - 完美向后兼容，支持新旧格式混合使用
+
+### 变更
+
+- **图表名称格式化逻辑优化**：改进 `chartFormatter.ts`
+  - 新增 `isAlreadyFormatted()` 函数检测图表名称格式
+  - `formatAppChartName()` 和 `formatSidStarChartName()` 支持新格式
+  - 新格式 APP 图表：移除跑道信息（RW/RWY），标准化后缀字母为大写
+  - 新格式 SID/STAR 图表：保持原样，仅清理多余空格
+- **跑道提取逻辑优化**：改进 `ChartList.tsx` 中的 `extractRunways()` 函数
+  - 新格式支持：解析 `RW 24`、`RWY 01/36L/36R` 等格式（斜杠分隔）
+  - 旧格式支持：继续解析 `RWY0136L36R` 等格式（连续数字）
+  - 确保跑道分组和筛选功能在新旧格式下都正常工作
+
+---
+
 ## [1.5.1] - 2025-11-24
 
 ### 修复
@@ -851,7 +877,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.5.1...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.5.2...HEAD
+[1.5.2]: https://github.com/6639835/chart-viewer/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/6639835/chart-viewer/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/6639835/chart-viewer/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/6639835/chart-viewer/compare/v1.3.3...v1.4.0

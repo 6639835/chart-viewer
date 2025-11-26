@@ -1,5 +1,15 @@
 import { ChartData, ChartCategory, CHART_TYPE_MAPPING } from "@/types/chart";
 
+// Check if the chart name is already in the new format (has spaces and proper formatting)
+// New format examples: "RNP ILS/DME z RW24", "RNAV RWY 01/36L"
+// Old format examples: "RNPILSDMEzRW24", "RNAVRWY0136L"
+function isAlreadyFormatted(chartName: string): boolean {
+  // If the name contains spaces outside of parentheses, it's likely already formatted
+  // Remove content in parentheses first, then check for spaces
+  const withoutParens = chartName.replace(/\([^)]*\)/g, "");
+  return withoutParens.includes(" ");
+}
+
 // Parse CAT roman numerals (handles I/II, II/III, I/II/IIIA patterns)
 function parseCATRomanNumerals(roman: string): string {
   // Check if ends with AI or A (indicates IIIA category)
@@ -37,6 +47,11 @@ function parseCATRomanNumerals(roman: string): string {
 
 // Format SID/STAR chart names for better readability
 export function formatSidStarChartName(chartName: string): string {
+  // If already formatted (new CSV format), return as-is with minimal cleanup
+  if (isAlreadyFormatted(chartName)) {
+    return chartName.replace(/\s+/g, " ").trim();
+  }
+
   let formatted = chartName;
 
   // Handle different procedure types before RWY
@@ -86,6 +101,22 @@ export function formatSidStarChartName(chartName: string): string {
 
 // Format APP chart names for better readability
 export function formatAppChartName(chartName: string): string {
+  // If already formatted (new CSV format), extract the meaningful part
+  // New format: "RNP ILS/DME z RW24" -> we want to display "RNP ILS/DME Z"
+  if (isAlreadyFormatted(chartName)) {
+    let formatted = chartName;
+
+    // Remove RW/RWY and runway numbers with optional space (e.g., "RW 24", "RW24", "RWY 18L")
+    formatted = formatted.replace(/\s*RW(?:Y)?\s*\d{2}[LRC]?/gi, "").trim();
+
+    // Normalize suffix letters (w, z, y, x) to uppercase
+    formatted = formatted.replace(/\s+([wzyx])(?:\s|$)/gi, (match, letter) => ` ${letter.toUpperCase()} `);
+
+    // Clean up multiple spaces
+    return formatted.replace(/\s+/g, " ").trim();
+  }
+
+  // Old format processing below (no spaces in chart name)
   // Remove RWY and runway numbers (e.g., RWY01, RWY18L, RWY36R)
   let formatted = chartName.replace(/RWY\d{2}[LRC]?/gi, "").trim();
 

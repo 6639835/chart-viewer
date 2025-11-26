@@ -21,14 +21,29 @@ interface ChartListProps {
 function extractRunways(chartName: string): string[] {
   const runways: string[] = [];
 
-  // Pattern 1: RWY followed by runway numbers (e.g., RWY0136L36R, RWY18L18R19)
-  const rwyMatch = chartName.match(/RWY(\d{2}(?:[LRC])?(?:\d{2}(?:[LRC])?)*)/i);
-  if (rwyMatch) {
-    const rwyString = rwyMatch[1];
-    // Split into individual runways (2-3 characters each)
-    const matches = rwyString.match(/\d{2}[LRC]?/g);
-    if (matches) {
-      runways.push(...matches);
+  // Check if chart name contains spaces (new format) or not (old format)
+  const hasSpaces = chartName.replace(/\([^)]*\)/g, "").includes(" ");
+
+  if (hasSpaces) {
+    // New format: "RNP ILS/DME z RW 24", "RNAV RWY 01/36L/36R", "RW 18L"
+    // Pattern: RW or RWY followed by optional space and runway numbers separated by /
+    const rwyMatch = chartName.match(/RW(?:Y)?\s*(\d{2}[LRC]?(?:\/\d{2}[LRC]?)*)/i);
+    if (rwyMatch) {
+      const rwyString = rwyMatch[1];
+      // Split by / to get individual runways
+      const parts = rwyString.split("/");
+      runways.push(...parts.map(p => p.trim()));
+    }
+  } else {
+    // Old format: RWY followed by runway numbers (e.g., RWY0136L36R, RWY18L18R19)
+    const rwyMatch = chartName.match(/RWY(\d{2}(?:[LRC])?(?:\d{2}(?:[LRC])?)*)/i);
+    if (rwyMatch) {
+      const rwyString = rwyMatch[1];
+      // Split into individual runways (2-3 characters each)
+      const matches = rwyString.match(/\d{2}[LRC]?/g);
+      if (matches) {
+        runways.push(...matches);
+      }
     }
   }
 
