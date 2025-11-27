@@ -21,6 +21,17 @@
 
 ---
 
+## [1.6.1] - 2025-11-27
+
+### 变更
+
+- **代码格式化**：使用 Prettier 统一代码风格
+  - 格式化 `ChartList.tsx` 中跑道提取函数的正则表达式和箭头函数
+  - 格式化 `chartFormatter.ts` 中的长行正则替换语句
+  - 简化 `tsconfig.json` 数组格式为单行写法
+
+---
+
 ## [1.6.0] - 2025-11-27
 
 ### 新增
@@ -954,7 +965,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.6.0...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/6639835/chart-viewer/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/6639835/chart-viewer/compare/v1.5.4...v1.6.0
 [1.5.4]: https://github.com/6639835/chart-viewer/compare/v1.5.3...v1.5.4
 [1.5.3]: https://github.com/6639835/chart-viewer/compare/v1.5.2...v1.5.3

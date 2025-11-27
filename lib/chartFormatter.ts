@@ -110,7 +110,10 @@ export function formatAppChartName(chartName: string): string {
     formatted = formatted.replace(/\s*RW(?:Y)?\s*\d{2}[LRC]?/gi, "").trim();
 
     // Normalize suffix letters (w, z, y, x) to uppercase
-    formatted = formatted.replace(/\s+([wzyx])(?:\s|$)/gi, (match, letter) => ` ${letter.toUpperCase()} `);
+    formatted = formatted.replace(
+      /\s+([wzyx])(?:\s|$)/gi,
+      (match, letter) => ` ${letter.toUpperCase()} `
+    );
 
     // Clean up multiple spaces
     return formatted.replace(/\s+/g, " ").trim();
