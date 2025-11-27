@@ -1,13 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 
 // Force dynamic rendering - this page requires runtime data
-export const dynamic = "force-dynamic";
+export const dynamicConfig = "force-dynamic";
 import Sidebar from "@/components/Sidebar";
 import ChartList from "@/components/ChartList";
-import PDFViewer from "@/components/PDFViewer";
 import SettingsModal from "@/components/SettingsModal";
+
+// Dynamic import PDFViewer with SSR disabled (react-pdf requires browser APIs)
+const PDFViewer = dynamic(() => import("@/components/PDFViewer"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900">
+      <div className="text-gray-400">Loading PDF viewer...</div>
+    </div>
+  ),
+});
 import {
   ChartData,
   ChartCategory,
@@ -376,7 +386,7 @@ export default function Home() {
             />
 
             {/* Sliding Panel - Responsive width */}
-            <div className="absolute left-0 top-0 bottom-0 w-full sm:w-96 md:w-[28rem] lg:w-96 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-hidden z-20 shadow-2xl">
+            <div className="absolute left-0 top-0 bottom-0 w-full sm:w-96 md:w-md lg:w-96 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-hidden z-20 shadow-2xl">
               <ChartList
                 charts={currentCharts}
                 selectedChart={selectedChart}

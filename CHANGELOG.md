@@ -21,6 +21,54 @@
 
 ---
 
+## [1.6.0] - 2025-11-27
+
+### 新增
+
+- **Next.js 16 和 React 19 支持**：升级到最新的 Next.js 和 React 版本
+  - Next.js 从 14.2.0 升级到 16.0.5
+  - React 和 React-DOM 从 18.3.1 升级到 19.2.0
+  - 添加 Turbopack 配置支持（Next.js 16 默认构建工具）
+- **ESLint 9 Flat Config 支持**：迁移到新的 ESLint 配置格式
+  - 从 `.eslintrc.json` 迁移到 `eslint.config.mjs`（Flat Config）
+  - 添加 `typescript-eslint` 支持
+  - 更新 lint 脚本为 `eslint .`
+
+### 变更
+
+- **依赖升级**：更新多个核心依赖到最新版本
+  - react-pdf: 9.1.0 → 10.2.0
+  - electron: 38.2.1 → 39.2.4
+  - lucide-react: 0.544.0 → 0.555.0
+  - iconv-lite: 0.6.3 → 0.7.0
+  - TypeScript: 5.4.5 → 5.8.0
+  - ESLint: 8.57.1 → 9.28.0
+  - eslint-config-next: 14.2.33 → 16.0.0
+  - tailwindcss: 3.4.1 → 3.4.17
+  - postcss: 8.4.38 → 8.5.0
+  - autoprefixer: 10.4.19 → 10.4.20
+- **TypeScript 配置优化**：更新 `tsconfig.json`
+  - JSX 设置从 `preserve` 改为 `react-jsx`（React 19 推荐）
+  - 添加 `.next/dev/types/**/*.ts` 到 include 路径
+- **react-pdf CSS 导入路径更新**：适配 react-pdf 10.x 版本
+  - 从 `react-pdf/dist/esm/Page/*.css` 改为 `react-pdf/dist/Page/*.css`
+- **PDFViewer 动态导入**：使用 `next/dynamic` 禁用 SSR
+  - 解决 react-pdf 需要浏览器 API 的问题
+  - 添加加载占位符提升用户体验
+- **PDF API 路由优化**：改进文件查找逻辑
+  - 支持包含斜杠的文件名（如 `北京/首都.pdf`）
+  - 自动尝试多种文件名格式（下划线、斜杠、无分隔符）
+  - 修复 Next.js 16 中 params 为 Promise 的 API 变更
+- **机场细则文件名处理**：改进 `getPDFFileName()` 函数
+  - 将文件名中的斜杠替换为下划线，避免路径解析问题
+  - 自动去除文件名首尾空格
+
+### 移除
+
+- **删除旧版 ESLint 配置**：移除 `.eslintrc.json` 文件
+
+---
+
 ## [1.5.4] - 2025-11-27
 
 ### 修复
@@ -187,7 +235,7 @@
 
 - **图表列表布局优化**：改进图表列表按钮的间距和文本显示
   - 图表按钮添加右侧内边距（pr-12），防止文本与书签图标重叠
-  - 图表名称添加 `break-words` 样式，正确处理长文本换行
+  - 图表名称添加 `wrap-break-word` 样式，正确处理长文本换行
 - **PDF 查看器移动端优化**：提升移动设备上的控制按钮可用性
   - 缩放控制按钮在所有屏幕尺寸上可见（之前仅在平板及以上显示）
   - 移动设备上缩放按钮和文字使用更小尺寸（图标 3.5px，文字 10px）
@@ -906,7 +954,9 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.5.3...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/6639835/chart-viewer/compare/v1.5.4...v1.6.0
+[1.5.4]: https://github.com/6639835/chart-viewer/compare/v1.5.3...v1.5.4
 [1.5.3]: https://github.com/6639835/chart-viewer/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/6639835/chart-viewer/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/6639835/chart-viewer/compare/v1.5.0...v1.5.1

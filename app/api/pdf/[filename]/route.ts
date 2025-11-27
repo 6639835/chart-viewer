@@ -13,48 +13,62 @@ async function findPdfPath(
   chartsDir: string,
   filename: string
 ): Promise<string | null> {
-  // Extract airport ICAO code from filename (first 4 characters before first hyphen)
-  const icaoMatch = filename.match(/^([A-Z]{4})-/);
+  // Build list of filename variants to try
+  const filenames = [filename];
 
-  if (icaoMatch) {
-    const icaoCode = icaoMatch[1];
-
-    // Try Format 2 (nested): charts/ICAO/filename
-    const nestedPath = path.join(chartsDir, icaoCode, filename);
-    try {
-      await fs.access(nestedPath);
-      return nestedPath;
-    } catch {
-      // File not found in nested format, continue to try flat format
-    }
+  // If filename contains underscore, also try:
+  // 1. with slash (for path-based storage like 北京/首都.pdf)
+  // 2. without separator (for files like 北京首都.pdf where the original name had no separator)
+  if (filename.includes("_")) {
+    filenames.push(filename.replace(/_/g, "/"));
+    filenames.push(filename.replace(/_/g, ""));
   }
 
-  // Try Format 1 (flat): charts/filename
-  const flatPath = path.join(chartsDir, filename);
-  try {
-    await fs.access(flatPath);
-    return flatPath;
-  } catch {
-    // File not found in flat format
-  }
+  // Try each filename variant
+  for (const tryFilename of filenames) {
+    // Extract airport ICAO code from filename (first 4 characters before first hyphen)
+    const icaoMatch = tryFilename.match(/^([A-Z]{4})-/);
 
-  // For files without ICAO prefix (like 机场细则 "北京首都.pdf"),
-  // search in all ICAO subdirectories
-  try {
-    const entries = await fs.readdir(chartsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const nestedPath = path.join(chartsDir, entry.name, filename);
-        try {
-          await fs.access(nestedPath);
-          return nestedPath;
-        } catch {
-          // Continue searching in other directories
-        }
+    if (icaoMatch) {
+      const icaoCode = icaoMatch[1];
+
+      // Try Format 2 (nested): charts/ICAO/filename
+      const nestedPath = path.join(chartsDir, icaoCode, tryFilename);
+      try {
+        await fs.access(nestedPath);
+        return nestedPath;
+      } catch {
+        // File not found in nested format, continue to try flat format
       }
     }
-  } catch (error) {
-    console.error("Error scanning directories:", error);
+
+    // Try Format 1 (flat): charts/filename
+    const flatPath = path.join(chartsDir, tryFilename);
+    try {
+      await fs.access(flatPath);
+      return flatPath;
+    } catch {
+      // File not found in flat format
+    }
+
+    // For files without ICAO prefix (like 机场细则 "北京首都.pdf"),
+    // search in all ICAO subdirectories
+    try {
+      const entries = await fs.readdir(chartsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const nestedPath = path.join(chartsDir, entry.name, tryFilename);
+          try {
+            await fs.access(nestedPath);
+            return nestedPath;
+          } catch {
+            // Continue searching in other directories
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error scanning directories:", error);
+    }
   }
 
   // File not found in any format
@@ -63,11 +77,13 @@ async function findPdfPath(
 
 export async function GET(
   request: Request,
-  { params }: { params: { filename: string } }
+  { params }: { params: Promise<{ filename: string }> }
 ) {
   try {
     // Decode URI component to handle Chinese characters
-    const filename = decodeURIComponent(params.filename);
+    const { filename: rawFilename } = await params;
+    // Trim whitespace and decode
+    const filename = decodeURIComponent(rawFilename).trim();
 
     const config = await getConfig();
     const chartsDir = path.isAbsolute(config.chartsDirectory)

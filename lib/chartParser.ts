@@ -126,7 +126,9 @@ export function getAirportList(groupedCharts: GroupedCharts): string[] {
 export function getPDFFileName(chart: ChartData): string {
   // For 机场细则, use ChartName.pdf (not AirportName as it contains slashes)
   if (chart.ChartTypeEx_CH === "机场细则") {
-    return `${chart.ChartName}.pdf`;
+    // Replace slashes with underscores and trim whitespace to create valid filename
+    const safeName = chart.ChartName.replace(/\//g, "_").trim();
+    return `${safeName}.pdf`;
   }
 
   // For other types, use AirportIcao-PAGE_NUMBER.pdf

@@ -94,7 +94,7 @@ async function generateIcons() {
 
         // Clean up iconset directory
         await fs.rm(iconsetDir, { recursive: true, force: true });
-      } catch (error) {
+      } catch {
         console.log("⚠️  Could not generate .icns (iconutil not available)");
       }
     }

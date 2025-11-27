@@ -69,7 +69,7 @@ async function main() {
     try {
       await waitForServer(PORT);
       console.log("✅ Next.js server is ready!\n");
-    } catch (error) {
+    } catch {
       console.error("❌ Failed to start Next.js server");
       process.exit(1);
     }
