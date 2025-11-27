@@ -78,15 +78,34 @@ export async function GET() {
     const csvDir = path.isAbsolute(config.csvDirectory)
       ? config.csvDirectory
       : path.join(process.cwd(), config.csvDirectory);
+    const chartsDir = path.isAbsolute(config.chartsDirectory)
+      ? config.chartsDirectory
+      : path.join(process.cwd(), config.chartsDirectory);
 
-    // Detect which format we're dealing with
-    const format = await detectFormat(csvDir);
-    console.log(`Detected format: ${format}`);
+    // Try to detect and load from csvDirectory first
+    let charts: ChartData[] = [];
+    try {
+      const format = await detectFormat(csvDir);
+      console.log(`Detected format in csvDirectory: ${format}`);
+      charts = format === 'old'
+        ? await loadOldFormat(csvDir)
+        : await loadNewFormat(csvDir);
+    } catch (error) {
+      console.log('No charts found in csvDirectory, trying chartsDirectory...');
+    }
 
-    // Load charts based on format
-    const charts = format === 'old'
-      ? await loadOldFormat(csvDir)
-      : await loadNewFormat(csvDir);
+    // If no charts found in csvDirectory, try chartsDirectory
+    if (charts.length === 0 && csvDir !== chartsDir) {
+      try {
+        const format = await detectFormat(chartsDir);
+        console.log(`Detected format in chartsDirectory: ${format}`);
+        charts = format === 'old'
+          ? await loadOldFormat(chartsDir)
+          : await loadNewFormat(chartsDir);
+      } catch (error) {
+        console.error('Error reading from chartsDirectory:', error);
+      }
+    }
 
     const groupedCharts = groupChartsByAirport(charts);
 

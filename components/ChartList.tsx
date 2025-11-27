@@ -36,13 +36,13 @@ function extractRunways(chartName: string): string[] {
     }
   } else {
     // Old format: RWY followed by runway numbers (e.g., RWY0136L36R, RWY18L18R19)
-    const rwyMatch = chartName.match(/RWY(\d{2}(?:[LRC])?(?:\d{2}(?:[LRC])?)*)/i);
-    if (rwyMatch) {
-      const rwyString = rwyMatch[1];
-      // Split into individual runways (2-3 characters each)
-      const matches = rwyString.match(/\d{2}[LRC]?/g);
-      if (matches) {
-        runways.push(...matches);
+  const rwyMatch = chartName.match(/RWY(\d{2}(?:[LRC])?(?:\d{2}(?:[LRC])?)*)/i);
+  if (rwyMatch) {
+    const rwyString = rwyMatch[1];
+    // Split into individual runways (2-3 characters each)
+    const matches = rwyString.match(/\d{2}[LRC]?/g);
+    if (matches) {
+      runways.push(...matches);
       }
     }
   }

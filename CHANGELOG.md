@@ -21,6 +21,24 @@
 
 ---
 
+## [1.5.3] - 2025-11-27
+
+### 变更
+
+- **增强图表加载容错性**：改进图表目录读取逻辑
+  - 优先从 `csvDirectory` 加载图表数据
+  - 当 `csvDirectory` 中未找到图表时，自动尝试从 `chartsDirectory` 加载
+  - 添加详细日志输出，便于排查数据加载问题
+  - 提高系统在不同配置环境下的适应性
+
+### 修复
+
+- **修复代码格式问题**：改进 `ChartList.tsx` 中跑道提取函数的代码缩进
+  - 统一旧格式跑道解析逻辑的缩进层级
+  - 提升代码可读性和维护性
+
+---
+
 ## [1.5.2] - 2025-11-26
 
 ### 修复
@@ -877,7 +895,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.5.2...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.5.3...HEAD
+[1.5.3]: https://github.com/6639835/chart-viewer/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/6639835/chart-viewer/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/6639835/chart-viewer/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/6639835/chart-viewer/compare/v1.4.0...v1.5.0
