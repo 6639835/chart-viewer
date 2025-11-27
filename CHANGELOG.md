@@ -21,6 +21,17 @@
 
 ---
 
+## [1.5.4] - 2025-11-27
+
+### 修复
+
+- **修复 ESLint 构建错误**：解决生产构建失败问题
+  - 移除 `app/api/charts/route.ts:93` 中未使用的 error 变量
+  - 修复 TypeScript ESLint 规则 `@typescript-eslint/no-unused-vars` 错误
+  - 确保生产构建通过所有代码质量检查
+
+---
+
 ## [1.5.3] - 2025-11-27
 
 ### 变更

@@ -90,7 +90,7 @@ export async function GET() {
       charts = format === 'old'
         ? await loadOldFormat(csvDir)
         : await loadNewFormat(csvDir);
-    } catch (error) {
+    } catch {
       console.log('No charts found in csvDirectory, trying chartsDirectory...');
     }
 
