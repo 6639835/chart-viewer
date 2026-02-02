@@ -38,11 +38,6 @@
   "build": {
     "appId": "com.chartviewer.efb",
     "productName": "Chart Viewer",
-    "publish": {
-      "provider": "github",
-      "owner": "6639835",
-      "repo": "chart-viewer"
-    },
     "files": [
       "electron/**/*",
       ".next/**/*",
@@ -87,7 +82,6 @@
     }
   },
   "dependencies": {
-    "electron-updater": "^6.6.2",
     "iconv-lite": "^0.7.0",
     "lucide-react": "^0.555.0",
     "next": "^16.0.5",

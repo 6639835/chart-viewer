@@ -21,6 +21,22 @@
 
 ---
 
+## [1.7.1] - 2026-02-02
+
+### 移除
+
+- **自动更新功能**：完全移除应用的自动更新功能
+  - 移除 `electron-updater` 依赖包
+  - 删除 `components/UpdateNotification.tsx` 组件
+  - 移除 `electron/main.js` 中的 `setupAutoUpdater()` 函数和相关代码
+  - 移除 `electron/preload.js` 中的更新器 API 暴露
+  - 移除 `types/electron.d.ts` 中的 `UpdateInfo` 接口和更新器类型定义
+  - 移除 `app/layout.tsx` 中的更新通知组件引用
+  - 移除 `package.json` 中的发布配置（`publish` 字段）
+  - 简化应用架构，减少不必要的依赖
+
+---
+
 ## [1.7.0] - 2026-02-02
 
 ### 新增
@@ -1016,7 +1032,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.7.0...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/6639835/chart-viewer/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/6639835/chart-viewer/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/6639835/chart-viewer/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/6639835/chart-viewer/compare/v1.5.4...v1.6.0
