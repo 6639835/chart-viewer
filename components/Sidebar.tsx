@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef } from "react";
 import { ChevronDown, Search, X, Settings } from "lucide-react";
 import { ChartCategory, CATEGORY_ORDER } from "@/types/chart";
 import ThemeToggle from "./ThemeToggle";
+import { useAutoHideScrollbar } from "@/lib/hooks/useAutoHideScrollbar";
 
 interface SidebarProps {
   airports: string[];
@@ -40,12 +41,13 @@ export default function Sidebar({
 }: SidebarProps) {
   const [isAirportDropdownOpen, setIsAirportDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isAirportScrolling, setIsAirportScrolling] = useState(false);
-  const [isCategoryScrolling, setIsCategoryScrolling] = useState(false);
-  const airportScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const categoryScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const airportListRef = useRef<HTMLDivElement>(null);
   const categoryListRef = useRef<HTMLDivElement>(null);
+
+  const isAirportScrolling = useAutoHideScrollbar(airportListRef, {
+    enabled: isAirportDropdownOpen,
+  });
+  const isCategoryScrolling = useAutoHideScrollbar(categoryListRef);
 
   const filteredAirports = useMemo(() => {
     if (!searchQuery.trim()) return airports;
@@ -66,63 +68,6 @@ export default function Sidebar({
       onClose();
     }
   };
-
-  // Handle scroll for airport list
-  useEffect(() => {
-    // Only bind scroll listener when dropdown is open
-    if (!isAirportDropdownOpen) return;
-
-    const scrollContainer = airportListRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      setIsAirportScrolling(true);
-
-      if (airportScrollTimeoutRef.current) {
-        clearTimeout(airportScrollTimeoutRef.current);
-      }
-
-      airportScrollTimeoutRef.current = setTimeout(() => {
-        setIsAirportScrolling(false);
-      }, 1000);
-    };
-
-    scrollContainer.addEventListener("scroll", handleScroll);
-
-    return () => {
-      scrollContainer.removeEventListener("scroll", handleScroll);
-      if (airportScrollTimeoutRef.current) {
-        clearTimeout(airportScrollTimeoutRef.current);
-      }
-    };
-  }, [isAirportDropdownOpen]);
-
-  // Handle scroll for category list
-  useEffect(() => {
-    const scrollContainer = categoryListRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      setIsCategoryScrolling(true);
-
-      if (categoryScrollTimeoutRef.current) {
-        clearTimeout(categoryScrollTimeoutRef.current);
-      }
-
-      categoryScrollTimeoutRef.current = setTimeout(() => {
-        setIsCategoryScrolling(false);
-      }, 1000);
-    };
-
-    scrollContainer.addEventListener("scroll", handleScroll);
-
-    return () => {
-      scrollContainer.removeEventListener("scroll", handleScroll);
-      if (categoryScrollTimeoutRef.current) {
-        clearTimeout(categoryScrollTimeoutRef.current);
-      }
-    };
-  }, []);
 
   return (
     <div className="w-20 bg-gray-100 dark:bg-gray-900 border-r border-gray-300 dark:border-gray-800 flex flex-col h-screen">

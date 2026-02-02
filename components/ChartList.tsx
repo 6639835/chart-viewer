@@ -7,6 +7,7 @@ import {
   formatAppChartName,
   formatSidStarChartName,
 } from "@/lib/chartFormatter";
+import { useAutoHideScrollbar } from "@/lib/hooks/useAutoHideScrollbar";
 
 interface ChartListProps {
   charts: ChartData[];
@@ -136,43 +137,13 @@ export default function ChartList({
   const [selectedRunwayFilter, setSelectedRunwayFilter] = useState<
     string | null
   >(null);
-  const [isScrolling, setIsScrolling] = useState(false);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isScrolling = useAutoHideScrollbar(scrollContainerRef);
 
   // Reset filter when category changes
   useEffect(() => {
     setSelectedRunwayFilter(null);
   }, [category]);
-
-  // Handle scroll event for auto-hide scrollbar
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      setIsScrolling(true);
-
-      // Clear existing timeout
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-
-      // Hide scrollbar after 1 second of no scrolling
-      scrollTimeoutRef.current = setTimeout(() => {
-        setIsScrolling(false);
-      }, 1000);
-    };
-
-    scrollContainer.addEventListener("scroll", handleScroll);
-
-    return () => {
-      scrollContainer.removeEventListener("scroll", handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
 
   // TAXI category should not be grouped by runway
   const shouldGroupByRunway = category !== "TAXI";

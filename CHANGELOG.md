@@ -21,6 +21,57 @@
 
 ---
 
+## [1.7.0] - 2026-02-02
+
+### 新增
+
+- **自动隐藏滚动条钩子**：新增 `useAutoHideScrollbar` 自定义 React Hook
+  - 实现滚动条自动隐藏功能，提供更清爽的界面体验
+  - 支持自定义超时时间（默认 1 秒后隐藏）
+  - 可选的启用/禁用控制
+  - 自动清理定时器，避免内存泄漏
+  - 位置：`lib/hooks/useAutoHideScrollbar.ts`
+
+### 变更
+
+- **主页面重构优化**：大幅改进 `app/page.tsx` 代码质量（净减少 72 行）
+  - 提取 `findAirportDiagramChart()` 辅助函数，改进机场图查找逻辑
+  - 优化图表加载逻辑，使用 `useCallback` 和 `useMemo` 提升性能
+  - 改进机场图自动选择算法，支持多级回退匹配（精确匹配 → 页码匹配 → 部分匹配）
+  - 添加 TypeScript 类型定义（`ChartsApiResponse` 类型）
+  - 优化 import 语句组织和代码结构
+- **组件代码优化**：改进多个组件的代码质量和性能
+  - `components/Sidebar.tsx`：减少 69 行代码
+  - `components/ChartList.tsx`：减少 33 行代码
+  - `components/PDFViewer.tsx`：减少 54 行代码
+  - `components/SettingsModal.tsx`：减少 33 行代码
+  - 移除冗余代码，改进 React hooks 使用
+- **API 路由改进**：优化 API 路由的代码组织和类型安全
+  - `app/api/charts/route.ts`：添加 `CsvFormat` 类型，新增 `resolveConfigDir()` 辅助函数
+  - `app/api/pdf/[filename]/route.ts`：改进文件查找逻辑和错误处理
+  - `app/api/browse/route.ts`：优化路径解析逻辑
+  - 统一代码风格和导入语句格式
+- **配置管理增强**：改进 `lib/configManager.ts` 的目录验证逻辑
+  - 使用 `path.resolve()` 确保路径规范化
+  - 改进错误消息的清晰度
+  - 添加详细的路径验证日志
+
+### 安全
+
+- **路径安全验证**：新增路径安全检查模块，防止目录遍历攻击
+  - 新增 `lib/pathSafety.ts` 工具模块
+  - `isPathInside()` 函数：验证目标路径是否在基础目录内
+  - `resolveSafePath()` 函数：安全地解析相对路径
+  - 防止通过 `../` 等方式访问应用根目录外的文件
+- **API 路由安全加固**：在所有文件系统操作中添加路径安全检查
+  - `app/api/browse/route.ts:18-26`：添加路径边界检查，拒绝访问应用根目录外的路径
+  - `app/api/charts/route.ts`：集成路径安全验证
+  - `app/api/pdf/[filename]/route.ts`：强化 PDF 文件访问安全
+  - `lib/configManager.ts:55-77`：配置目录验证增加安全检查
+  - 所有不安全的路径访问尝试将返回 400 错误
+
+---
+
 ## [1.6.1] - 2025-11-27
 
 ### 变更
@@ -965,7 +1016,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.6.1...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/6639835/chart-viewer/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/6639835/chart-viewer/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/6639835/chart-viewer/compare/v1.5.4...v1.6.0
 [1.5.4]: https://github.com/6639835/chart-viewer/compare/v1.5.3...v1.5.4

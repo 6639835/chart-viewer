@@ -1,8 +1,10 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { AppConfig, DEFAULT_CONFIG } from "@/types/config";
+import { isPathInside } from "@/lib/pathSafety";
 
 const CONFIG_FILE = "config.json";
+const ROOT_DIR = process.cwd();
 
 // Get config file path - use USER_DATA_PATH in Electron or cwd in web mode
 function getConfigPath(): string {
@@ -53,18 +55,26 @@ export async function validateDirectory(
     const absolutePath = path.isAbsolute(dirPath)
       ? dirPath
       : path.join(process.cwd(), dirPath);
+    const resolvedPath = path.resolve(absolutePath);
+
+    if (!isPathInside(ROOT_DIR, resolvedPath)) {
+      return {
+        valid: false,
+        error: "Path must be within the application root directory",
+      };
+    }
 
     // Check if directory exists
-    const stats = await fs.stat(absolutePath);
+    const stats = await fs.stat(resolvedPath);
 
     if (!stats.isDirectory()) {
       return { valid: false, error: "Path is not a directory" };
     }
 
     // Check read permissions
-    await fs.access(absolutePath, fs.constants.R_OK);
+    await fs.access(resolvedPath, fs.constants.R_OK);
 
-    return { valid: true, absolutePath };
+    return { valid: true, absolutePath: resolvedPath };
   } catch (error) {
     return {
       valid: false,

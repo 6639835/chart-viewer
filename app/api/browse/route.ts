@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
+import { isPathInside } from "@/lib/pathSafety";
+
+const ROOT_DIR = process.cwd();
 
 export async function POST(request: Request) {
   try {
@@ -15,7 +18,13 @@ export async function POST(request: Request) {
       : path.join(process.cwd(), targetPath);
 
     // Security check: prevent accessing sensitive directories
-    const normalizedPath = path.normalize(absolutePath);
+    const normalizedPath = path.resolve(path.normalize(absolutePath));
+    if (!isPathInside(ROOT_DIR, normalizedPath)) {
+      return NextResponse.json(
+        { success: false, error: "Path is outside the application root" },
+        { status: 400 }
+      );
+    }
 
     // Check if directory exists and is readable
     try {

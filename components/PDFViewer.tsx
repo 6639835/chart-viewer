@@ -16,11 +16,15 @@ import {
 import { ChartData } from "@/types/chart";
 import { useTheme } from "next-themes";
 import { getFormattedChartName } from "@/lib/chartFormatter";
+import { useAutoHideScrollbar } from "@/lib/hooks/useAutoHideScrollbar";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
-// Configure worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Configure worker to use bundled asset for offline-safe usage
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
 
 interface PDFViewerProps {
   pdfUrl: string;
@@ -56,15 +60,26 @@ export default function PDFViewer({
   const [scrollStart, setScrollStart] = useState<{ left: number; top: number }>(
     { left: 0, top: 0 }
   );
-  const [isScrolling, setIsScrolling] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfWrapperRef = useRef<HTMLDivElement>(null);
-  const rerenderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const rerenderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { theme } = useTheme();
+  const isScrolling = useAutoHideScrollbar(containerRef, {
+    enabled: !autoFit,
+  });
 
   // Determine if colors should be inverted based on theme
   const invertColors = theme === "dark";
+
+  // Reset paging state when the document changes
+  useEffect(() => {
+    setPageNumber(1);
+    setNumPages(0);
+    setPageWidth(0);
+    setPageHeight(0);
+    setLoading(true);
+    setError(null);
+  }, [pdfUrl, chart.ChartId]);
 
   // Measure container dimensions
   useEffect(() => {
@@ -156,35 +171,6 @@ export default function PDFViewer({
       container.removeEventListener("mouseleave", handleMouseLeave);
     };
   }, [isDragging, dragStart, scrollStart, autoFit]);
-
-  // Detect scrolling to show/hide scrollbar
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const container = containerRef.current;
-
-    const handleScroll = () => {
-      setIsScrolling(true);
-
-      // Clear existing timeout
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-
-      // Hide scrollbar after 1 second of no scrolling
-      scrollTimeoutRef.current = setTimeout(() => {
-        setIsScrolling(false);
-      }, 1000);
-    };
-
-    container.addEventListener("scroll", handleScroll, { passive: true });
-
-    return () => {
-      container.removeEventListener("scroll", handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
 
   // Mouse wheel zoom (Ctrl/Cmd + scroll) with intelligent re-rendering
   useEffect(() => {

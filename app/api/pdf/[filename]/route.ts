@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
 import { getConfig } from "@/lib/configManager";
+import { resolveSafePath } from "@/lib/pathSafety";
 
 /**
  * Finds PDF file in either format:
@@ -13,6 +14,8 @@ async function findPdfPath(
   chartsDir: string,
   filename: string
 ): Promise<string | null> {
+  const baseDir = path.resolve(chartsDir);
+
   // Build list of filename variants to try
   const filenames = [filename];
 
@@ -33,20 +36,27 @@ async function findPdfPath(
       const icaoCode = icaoMatch[1];
 
       // Try Format 2 (nested): charts/ICAO/filename
-      const nestedPath = path.join(chartsDir, icaoCode, tryFilename);
+      const nestedPath = resolveSafePath(
+        baseDir,
+        path.join(icaoCode, tryFilename)
+      );
       try {
-        await fs.access(nestedPath);
-        return nestedPath;
+        if (nestedPath) {
+          await fs.access(nestedPath);
+          return nestedPath;
+        }
       } catch {
         // File not found in nested format, continue to try flat format
       }
     }
 
     // Try Format 1 (flat): charts/filename
-    const flatPath = path.join(chartsDir, tryFilename);
+    const flatPath = resolveSafePath(baseDir, tryFilename);
     try {
-      await fs.access(flatPath);
-      return flatPath;
+      if (flatPath) {
+        await fs.access(flatPath);
+        return flatPath;
+      }
     } catch {
       // File not found in flat format
     }
@@ -54,13 +64,18 @@ async function findPdfPath(
     // For files without ICAO prefix (like 机场细则 "北京首都.pdf"),
     // search in all ICAO subdirectories
     try {
-      const entries = await fs.readdir(chartsDir, { withFileTypes: true });
+      const entries = await fs.readdir(baseDir, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isDirectory()) {
-          const nestedPath = path.join(chartsDir, entry.name, tryFilename);
+          const nestedPath = resolveSafePath(
+            baseDir,
+            path.join(entry.name, tryFilename)
+          );
           try {
-            await fs.access(nestedPath);
-            return nestedPath;
+            if (nestedPath) {
+              await fs.access(nestedPath);
+              return nestedPath;
+            }
           } catch {
             // Continue searching in other directories
           }

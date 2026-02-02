@@ -11,6 +11,7 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { AppConfig } from "@/types/config";
+import { useAutoHideScrollbar } from "@/lib/hooks/useAutoHideScrollbar";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -48,9 +49,10 @@ export default function SettingsModal({
     null
   );
   const [browseLoading, setBrowseLoading] = useState(false);
-  const [isScrolling, setIsScrolling] = useState(false);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const directoryListRef = useRef<HTMLDivElement>(null);
+  const isScrolling = useAutoHideScrollbar(directoryListRef, {
+    enabled: Boolean(browsing),
+  });
 
   useEffect(() => {
     if (isOpen) {
@@ -186,33 +188,6 @@ export default function SettingsModal({
       setSaving(false);
     }
   };
-
-  // Handle scroll for directory list
-  useEffect(() => {
-    const scrollContainer = directoryListRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      setIsScrolling(true);
-
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-
-      scrollTimeoutRef.current = setTimeout(() => {
-        setIsScrolling(false);
-      }, 1000);
-    };
-
-    scrollContainer.addEventListener("scroll", handleScroll);
-
-    return () => {
-      scrollContainer.removeEventListener("scroll", handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, [browsing]);
 
   if (!isOpen) return null;
 

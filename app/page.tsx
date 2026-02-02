@@ -1,16 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import dynamic from "next/dynamic";
-
-// Force dynamic rendering - this page requires runtime data
-export const dynamicConfig = "force-dynamic";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import nextDynamic from "next/dynamic";
 import Sidebar from "@/components/Sidebar";
 import ChartList from "@/components/ChartList";
 import SettingsModal from "@/components/SettingsModal";
+import { getPDFFileName } from "@/lib/chartParser";
+import {
+  CATEGORY_ORDER,
+  type ChartCategory,
+  type ChartData,
+  type GroupedCharts,
+} from "@/types/chart";
+import { Loader2 } from "lucide-react";
+
+// Force dynamic rendering - this page requires runtime data
+export const dynamic = "force-dynamic";
 
 // Dynamic import PDFViewer with SSR disabled (react-pdf requires browser APIs)
-const PDFViewer = dynamic(() => import("@/components/PDFViewer"), {
+const PDFViewer = nextDynamic(() => import("@/components/PDFViewer"), {
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900">
@@ -18,14 +26,29 @@ const PDFViewer = dynamic(() => import("@/components/PDFViewer"), {
     </div>
   ),
 });
-import {
-  ChartData,
-  ChartCategory,
-  GroupedCharts,
-  CATEGORY_ORDER,
-} from "@/types/chart";
-import { getPDFFileName } from "@/lib/chartParser";
-import { Loader2 } from "lucide-react";
+
+type ChartsApiResponse =
+  | { success: true; data: GroupedCharts }
+  | { success: false; error: string };
+
+function findAirportDiagramChart(charts: ChartData[]): ChartData | null {
+  // Try exact match of "机场图" first.
+  const exact = charts.find((chart) => chart.ChartName === "机场图");
+  if (exact) return exact;
+
+  // Look for PAGE_NUMBER "2A" / "0G" (typical airport diagram).
+  const byPage = charts.find(
+    (chart) => chart.PAGE_NUMBER === "2A" || chart.PAGE_NUMBER === "0G"
+  );
+  if (byPage) return byPage;
+
+  // Fallback: any chart that includes "机场图".
+  const byName = charts.find((chart) => chart.ChartName.includes("机场图"));
+  if (byName) return byName;
+
+  // Final fallback: first TAXI chart.
+  return charts[0] ?? null;
+}
 
 export default function Home() {
   const [groupedCharts, setGroupedCharts] = useState<GroupedCharts>({});
@@ -44,132 +67,62 @@ export default function Home() {
     Record<string, string>
   >({});
 
-  const loadCharts = () => {
-    setLoading(true);
-    fetch("/api/charts")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setGroupedCharts(data.data);
-          const airportList = Object.keys(data.data).sort();
-          setAirports(airportList);
-          if (airportList.length > 0) {
-            const firstAirport = airportList[0];
-            setSelectedAirport(firstAirport);
+  const setSelectedAirportWithDiagram = useCallback(
+    (airport: string, chartsForAirport: GroupedCharts[string] | undefined) => {
+      setSelectedAirport(airport);
+      setSelectedCategory(null);
 
-            // Auto-select the airport diagram chart (机场图) for the first airport
-            const airportCharts = data.data[firstAirport];
-            if (airportCharts) {
-              // Look for 机场图 in TAXI category first
-              const taxiCharts = airportCharts["TAXI"] || [];
+      const taxiCharts = chartsForAirport?.TAXI ?? [];
+      const airportDiagram = findAirportDiagramChart(taxiCharts);
 
-              // Try to find exact match of "机场图" first
-              let airportDiagram = taxiCharts.find(
-                (chart: ChartData) => chart.ChartName === "机场图"
-              );
+      if (!airportDiagram) {
+        setSelectedChart(null);
+        return;
+      }
 
-              // If not found, look for charts with PAGE_NUMBER "2A" (typical airport diagram)
-              if (!airportDiagram) {
-                airportDiagram = taxiCharts.find(
-                  (chart: ChartData) =>
-                    chart.PAGE_NUMBER === "2A" || chart.PAGE_NUMBER === "0G"
-                );
-              }
-
-              // If still not found, look for any chart with "机场图" in the name
-              if (!airportDiagram) {
-                airportDiagram = taxiCharts.find((chart: ChartData) =>
-                  chart.ChartName.includes("机场图")
-                );
-              }
-
-              // If still not found, just take the first TAXI chart
-              if (!airportDiagram && taxiCharts.length > 0) {
-                airportDiagram = taxiCharts[0];
-              }
-
-              if (airportDiagram) {
-                setSelectedChart(airportDiagram);
-                // Auto-bookmark the airport diagram
-                setBookmarkedCharts((prev) => {
-                  const newSet = new Set(prev);
-                  newSet.add(airportDiagram.ChartId);
-                  return newSet;
-                });
-                // Track it as the last bookmarked TAXI chart for this airport
-                setLastBookmarkedByCategory((prev) => ({
-                  ...prev,
-                  [`${firstAirport}_TAXI`]: airportDiagram.ChartId,
-                }));
-              }
-            }
-          }
-        }
-        setLoading(false);
-      })
-      .catch((error) => {
-        console.error("Error loading charts:", error);
-        setLoading(false);
+      setSelectedChart(airportDiagram);
+      setBookmarkedCharts((prev) => {
+        const next = new Set(prev);
+        next.add(airportDiagram.ChartId);
+        return next;
       });
-  };
+      setLastBookmarkedByCategory((prev) => ({
+        ...prev,
+        [`${airport}_TAXI`]: airportDiagram.ChartId,
+      }));
+    },
+    []
+  );
+
+  const loadCharts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/charts");
+      const data: ChartsApiResponse = await res.json();
+
+      if (!data.success) return;
+
+      setGroupedCharts(data.data);
+      const airportList = Object.keys(data.data).sort();
+      setAirports(airportList);
+
+      if (airportList.length > 0) {
+        const firstAirport = airportList[0];
+        setSelectedAirportWithDiagram(firstAirport, data.data[firstAirport]);
+      }
+    } catch (error) {
+      console.error("Error loading charts:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [setSelectedAirportWithDiagram]);
 
   useEffect(() => {
     loadCharts();
-  }, []);
+  }, [loadCharts]);
 
   const handleAirportChange = (airport: string) => {
-    setSelectedAirport(airport);
-    setSelectedCategory(null);
-
-    // Auto-select the airport diagram chart (机场图) if available
-    const airportCharts = groupedCharts[airport];
-    if (airportCharts) {
-      // Look for 机场图 in TAXI category first
-      const taxiCharts = airportCharts["TAXI"] || [];
-
-      // Try to find exact match of "机场图" first
-      let airportDiagram = taxiCharts.find(
-        (chart) => chart.ChartName === "机场图"
-      );
-
-      // If not found, look for charts with PAGE_NUMBER "2A" (typical airport diagram)
-      if (!airportDiagram) {
-        airportDiagram = taxiCharts.find(
-          (chart) => chart.PAGE_NUMBER === "2A" || chart.PAGE_NUMBER === "0G"
-        );
-      }
-
-      // If still not found, look for any chart with "机场图" in the name
-      if (!airportDiagram) {
-        airportDiagram = taxiCharts.find((chart) =>
-          chart.ChartName.includes("机场图")
-        );
-      }
-
-      // If still not found, just take the first TAXI chart
-      if (!airportDiagram && taxiCharts.length > 0) {
-        airportDiagram = taxiCharts[0];
-      }
-
-      if (airportDiagram) {
-        setSelectedChart(airportDiagram);
-        // Auto-bookmark the airport diagram
-        setBookmarkedCharts((prev) => {
-          const newSet = new Set(prev);
-          newSet.add(airportDiagram.ChartId);
-          return newSet;
-        });
-        // Track it as the last bookmarked TAXI chart for this airport
-        setLastBookmarkedByCategory((prev) => ({
-          ...prev,
-          [`${airport}_TAXI`]: airportDiagram.ChartId,
-        }));
-        return;
-      }
-    }
-
-    // If no airport diagram found, clear selection
-    setSelectedChart(null);
+    setSelectedAirportWithDiagram(airport, groupedCharts[airport]);
   };
 
   const handleCategoryChange = (category: ChartCategory) => {
@@ -236,67 +189,66 @@ export default function Home() {
 
   const handleToggleBookmark = (chart: ChartData, category: ChartCategory) => {
     setBookmarkedCharts((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(chart.ChartId)) {
-        newSet.delete(chart.ChartId);
+      const next = new Set(prev);
+      const categoryKey = `${selectedAirport}_${category}`;
+      const isRemoving = next.has(chart.ChartId);
 
-        // Remove from lastBookmarkedByCategory if it's the last one for this category
-        const categoryKey = `${selectedAirport}_${category}`;
-        if (lastBookmarkedByCategory[categoryKey] === chart.ChartId) {
-          setLastBookmarkedByCategory((prevLast) => {
-            const newLast = { ...prevLast };
-            delete newLast[categoryKey];
-            return newLast;
-          });
-        }
+      if (isRemoving) {
+        next.delete(chart.ChartId);
       } else {
-        newSet.add(chart.ChartId);
-
-        // Update lastBookmarkedByCategory for quick access
-        const categoryKey = `${selectedAirport}_${category}`;
-        setLastBookmarkedByCategory((prevLast) => ({
-          ...prevLast,
-          [categoryKey]: chart.ChartId,
-        }));
+        next.add(chart.ChartId);
       }
-      return newSet;
+
+      setLastBookmarkedByCategory((prevLast) => {
+        if (isRemoving) {
+          if (prevLast[categoryKey] !== chart.ChartId) return prevLast;
+          const nextLast = { ...prevLast };
+          delete nextLast[categoryKey];
+          return nextLast;
+        }
+        return { ...prevLast, [categoryKey]: chart.ChartId };
+      });
+
+      return next;
     });
   };
 
-  const getBookmarkedChartsForCurrentAirport = (): ChartData[] => {
+  const bookmarkedChartsForCurrentAirport = useMemo(() => {
     if (!selectedAirport) return [];
-
-    const allCharts: ChartData[] = [];
     const airportCharts = groupedCharts[selectedAirport];
-
     if (!airportCharts) return [];
 
-    // Collect all charts from all categories for current airport
-    CATEGORY_ORDER.forEach((category) => {
-      const charts = airportCharts[category] || [];
-      allCharts.push(...charts);
-    });
+    const allCharts: ChartData[] = [];
+    for (const category of CATEGORY_ORDER) {
+      allCharts.push(...(airportCharts[category] ?? []));
+    }
 
-    // Filter to only bookmarked charts
     return allCharts.filter((chart) => bookmarkedCharts.has(chart.ChartId));
-  };
+  }, [bookmarkedCharts, groupedCharts, selectedAirport]);
 
   const handleNavigateToBookmark = (direction: "next" | "prev") => {
-    const bookmarked = getBookmarkedChartsForCurrentAirport();
-    if (bookmarked.length === 0) return;
+    if (bookmarkedChartsForCurrentAirport.length === 0) return;
 
     const currentIndex = selectedChart
-      ? bookmarked.findIndex((c) => c.ChartId === selectedChart.ChartId)
+      ? bookmarkedChartsForCurrentAirport.findIndex(
+          (c) => c.ChartId === selectedChart.ChartId
+        )
       : -1;
 
     let nextIndex: number;
     if (direction === "next") {
-      nextIndex = currentIndex < bookmarked.length - 1 ? currentIndex + 1 : 0;
+      nextIndex =
+        currentIndex < bookmarkedChartsForCurrentAirport.length - 1
+          ? currentIndex + 1
+          : 0;
     } else {
-      nextIndex = currentIndex > 0 ? currentIndex - 1 : bookmarked.length - 1;
+      nextIndex =
+        currentIndex > 0
+          ? currentIndex - 1
+          : bookmarkedChartsForCurrentAirport.length - 1;
     }
 
-    setSelectedChart(bookmarked[nextIndex]);
+    setSelectedChart(bookmarkedChartsForCurrentAirport[nextIndex]);
   };
 
   const handleSettingsSaved = () => {
@@ -406,7 +358,7 @@ export default function Home() {
               pdfUrl={`/api/pdf/${encodeURIComponent(getPDFFileName(selectedChart))}`}
               chart={selectedChart}
               onOpenSidebar={() => setIsSidebarOpen(true)}
-              bookmarkedCharts={getBookmarkedChartsForCurrentAirport()}
+              bookmarkedCharts={bookmarkedChartsForCurrentAirport}
               onNavigateToBookmark={handleNavigateToBookmark}
             />
           ) : (
