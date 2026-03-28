@@ -21,6 +21,18 @@
 
 ---
 
+## [1.7.3] - 2026-03-28
+
+### 修复
+
+- **修复 Windows CI 构建失败问题**：解决 electron-builder 下载 `winCodeSign` 时遭遇 502 错误导致构建中断的问题
+  - 为 Windows 构建步骤新增 `electron-builder` 二进制缓存（`%LOCALAPPDATA%\electron-builder\Cache`）
+  - 缓存命中时跳过 `winCodeSign-2.6.0.7z` 的网络下载，彻底规避 GitHub Release CDN 不稳定的影响
+  - 使用 `nick-fields/retry@v3` 为 Windows 构建步骤添加自动重试（最多 3 次，每次超时 15 分钟）
+  - 同步更新 `build.yml` 和 `pre-release.yml` 两个工作流
+
+---
+
 ## [1.7.2] - 2026-03-28
 
 ### 新增
@@ -1058,7 +1070,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.7.2...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.7.3...HEAD
+[1.7.3]: https://github.com/6639835/chart-viewer/compare/v1.7.2...v1.7.3
 [1.7.2]: https://github.com/6639835/chart-viewer/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/6639835/chart-viewer/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/6639835/chart-viewer/compare/v1.6.1...v1.7.0
