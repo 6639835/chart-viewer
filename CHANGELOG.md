@@ -21,6 +21,32 @@
 
 ---
 
+## [1.7.2] - 2026-03-28
+
+### 新增
+
+- **完整自动更新功能**：重新实现完整的应用内自动更新流程
+  - 恢复 `electron-updater` 依赖包
+  - 恢复 `package.json` 中的 GitHub 发布配置（`publish` 字段）
+  - 重建 `components/UpdateNotification.tsx` 组件，支持完整更新流程
+  - 恢复 `electron/main.js` 中的 `setupAutoUpdater()` 函数
+  - 恢复 `electron/preload.js` 中的更新器 API 暴露
+  - 恢复 `types/electron.d.ts` 中的 `UpdateInfo`、`DownloadProgress` 接口及更新器类型定义
+  - 恢复 `app/layout.tsx` 中的更新通知组件引用
+- **更新流程状态机**：`UpdateNotification` 组件支持完整的五阶段更新流程
+  - **available**：发现新版本，显示版本号及"Download Update"按钮
+  - **downloading**：下载中，实时显示进度条（百分比）和下载速度（KB/s）
+  - **downloaded**：下载完成，显示"Restart & Install"按钮
+  - **error**：更新失败，显示错误信息及"Check on GitHub"回退按钮
+  - 除下载中外，所有阶段均可关闭通知
+- **下载与安装 IPC 接口**：
+  - `updater-download-update`：用户手动触发下载
+  - `updater-install-update`：调用 `quitAndInstall()` 退出并安装更新
+  - `updater-download-progress` 事件：实时推送下载进度（百分比、速度、已传输/总大小）
+  - `updater-update-downloaded` 事件：下载完成通知
+
+---
+
 ## [1.7.1] - 2026-02-02
 
 ### 移除
@@ -1032,7 +1058,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.7.1...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.7.2...HEAD
+[1.7.2]: https://github.com/6639835/chart-viewer/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/6639835/chart-viewer/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/6639835/chart-viewer/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/6639835/chart-viewer/compare/v1.6.0...v1.6.1
