@@ -17,7 +17,6 @@ function getPort() {
   return 3000 + Math.floor(Math.random() * 1000);
 }
 
-
 // Setup auto updater
 function setupAutoUpdater() {
   // Only enable auto-update in production
@@ -369,7 +368,10 @@ ipcMain.handle("get-config-path", () => {
 // Auto-updater IPC handlers
 ipcMain.handle("updater-check-for-updates", async () => {
   if (isDev) {
-    return { available: false, message: "Updates disabled in development mode" };
+    return {
+      available: false,
+      message: "Updates disabled in development mode",
+    };
   }
   try {
     const result = await autoUpdater.checkForUpdates();

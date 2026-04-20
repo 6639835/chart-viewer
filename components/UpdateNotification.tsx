@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 import { X, Download, RefreshCw, AlertCircle, Rocket } from "lucide-react";
 import type { UpdateInfo, DownloadProgress } from "@/types/electron";
 
-type Phase = "idle" | "checking" | "available" | "downloading" | "downloaded" | "error";
+type Phase =
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "downloaded"
+  | "error";
 
 export default function UpdateNotification() {
   const [phase, setPhase] = useState<Phase>("idle");
@@ -35,10 +41,12 @@ export default function UpdateNotification() {
       setPhase("idle");
     });
 
-    const cleanupProgress = updater.onDownloadProgress((p: DownloadProgress) => {
-      setProgress(p);
-      setPhase("downloading");
-    });
+    const cleanupProgress = updater.onDownloadProgress(
+      (p: DownloadProgress) => {
+        setProgress(p);
+        setPhase("downloading");
+      }
+    );
 
     const cleanupDownloaded = updater.onUpdateDownloaded((info: UpdateInfo) => {
       setUpdateInfo(info);
@@ -82,7 +90,8 @@ export default function UpdateNotification() {
   };
 
   const handleOpenGitHub = () => {
-    const releaseUrl = "https://github.com/6639835/chart-viewer/releases/latest";
+    const releaseUrl =
+      "https://github.com/6639835/chart-viewer/releases/latest";
     if (window.electronAPI) {
       window.electronAPI.openExternal(releaseUrl);
     } else {
@@ -136,7 +145,9 @@ export default function UpdateNotification() {
         <div className="px-4 pb-4 space-y-3">
           {phase === "error" && (
             <>
-              <p className="text-sm text-red-600 dark:text-red-400 break-words">{error}</p>
+              <p className="text-sm text-red-600 dark:text-red-400 break-words">
+                {error}
+              </p>
               <button
                 onClick={handleOpenGitHub}
                 className="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
@@ -176,7 +187,9 @@ export default function UpdateNotification() {
                 <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
                   <span>{Math.round(progress?.percent ?? 0)}%</span>
                   {progress && (
-                    <span>{Math.round(progress.bytesPerSecond / 1024)} KB/s</span>
+                    <span>
+                      {Math.round(progress.bytesPerSecond / 1024)} KB/s
+                    </span>
                   )}
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">

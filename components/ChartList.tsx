@@ -370,7 +370,8 @@ export default function ChartList({
                     {runway === "其他" ? "其他图表" : `RWY ${runway}`}
                   </h3>
                   <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded font-medium flex-shrink-0 ml-2">
-                    {runwayCharts.length} 张
+                    {runwayCharts.length}{" "}
+                    {runwayCharts.length === 1 ? "chart" : "charts"}
                   </span>
                 </div>
 

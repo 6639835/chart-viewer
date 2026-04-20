@@ -193,9 +193,7 @@ export default function Sidebar({
       {/* Bottom icons/buttons */}
       <div className="p-2 border-t border-gray-300 dark:border-gray-800 space-y-2">
         {/* Theme Toggle */}
-        <div className="w-full flex justify-center">
-          <ThemeToggle />
-        </div>
+        <ThemeToggle />
 
         {/* Settings button */}
         {onOpenSettings && (

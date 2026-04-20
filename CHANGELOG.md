@@ -21,6 +21,28 @@
 
 ---
 
+## [1.8.0] - 2026-04-20
+
+### 变更
+
+- **PDF 查看器容器结构重构**：改进手动缩放模式下的 PDF 容器布局与对齐
+  - 抽取 `MANUAL_PAGE_PADDING` 常量（8px），统一手动模式的内边距策略
+  - 自动适配模式（auto）保留外层容器的 `p-2 sm:p-4` 内边距
+  - 手动缩放模式将外层容器内边距移至页面容器自身，使用 `box-sizing: content-box`，避免内边距影响滚动尺寸计算
+  - 新增中间包装层精确承载 `pageWidth * scale` × `pageHeight * scale` 尺寸，PDF 内层容器改用 `position: relative` + `top/left: 0`
+  - 移除原先的 `Math.ceil(... + 16)` 与 `top: 2 / left: 2` 偏移补丁，由结构化布局取代
+  - 引入 `hasPageDimensions` 派生状态，页面尺寸未就绪时退回 `auto` 布局，避免初始化阶段闪烁
+- **ThemeToggle 主题切换按钮全宽化**：与 Sidebar 底部其他按钮的视觉风格保持一致
+  - 按钮宽度由内容自适应改为 `w-full`，并使用 flex 居中图标
+  - 圆角由 `rounded-lg` 调整为 `rounded`
+  - Sidebar 中移除多余的居中包装 `<div>`，由按钮自身负责布局
+- **图表数量标签英文化**：`ChartList` 中跑道分组的数量显示由 `"{n} 张"` 改为 `"{n} chart"` / `"{n} charts"`，统一应用整体英文界面风格
+- **代码格式化**：使用 Prettier 对自动更新相关文件进行格式化
+  - `components/UpdateNotification.tsx`、`electron/main.js`、`electron/preload.js`、`types/electron.d.ts` 中长行拆分、对象/参数换行调整
+  - 仅样式调整，无行为变化
+
+---
+
 ## [1.7.3] - 2026-03-28
 
 ### 修复
@@ -1070,7 +1092,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.7.3...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/6639835/chart-viewer/compare/v1.7.3...v1.8.0
 [1.7.3]: https://github.com/6639835/chart-viewer/compare/v1.7.2...v1.7.3
 [1.7.2]: https://github.com/6639835/chart-viewer/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/6639835/chart-viewer/compare/v1.7.0...v1.7.1

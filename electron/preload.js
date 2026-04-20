@@ -35,12 +35,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
     },
 
     onUpdateNotAvailable: (callback) => {
-      ipcRenderer.on("updater-update-not-available", (_, info) => callback(info));
-      return () => ipcRenderer.removeAllListeners("updater-update-not-available");
+      ipcRenderer.on("updater-update-not-available", (_, info) =>
+        callback(info)
+      );
+      return () =>
+        ipcRenderer.removeAllListeners("updater-update-not-available");
     },
 
     onDownloadProgress: (callback) => {
-      ipcRenderer.on("updater-download-progress", (_, progress) => callback(progress));
+      ipcRenderer.on("updater-download-progress", (_, progress) =>
+        callback(progress)
+      );
       return () => ipcRenderer.removeAllListeners("updater-download-progress");
     },
 

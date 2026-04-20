@@ -34,6 +34,8 @@ interface PDFViewerProps {
   onNavigateToBookmark: (direction: "next" | "prev") => void;
 }
 
+const MANUAL_PAGE_PADDING = 8;
+
 export default function PDFViewer({
   pdfUrl,
   chart,
@@ -67,6 +69,7 @@ export default function PDFViewer({
   const isScrolling = useAutoHideScrollbar(containerRef, {
     enabled: !autoFit,
   });
+  const hasPageDimensions = pageWidth > 0 && pageHeight > 0;
 
   // Determine if colors should be inverted based on theme
   const invertColors = theme === "dark";
@@ -457,10 +460,10 @@ export default function PDFViewer({
       {/* PDF Content */}
       <div
         ref={containerRef}
-        className={`flex-1 p-2 sm:p-4 bg-gray-200 dark:bg-gray-900 ${
+        className={`flex-1 bg-gray-200 dark:bg-gray-900 ${
           autoFit
-            ? "overflow-hidden flex items-center justify-center"
-            : "overflow-auto auto-hide-scrollbar"
+            ? "p-2 sm:p-4 overflow-hidden flex items-center justify-center"
+            : "p-0 overflow-auto auto-hide-scrollbar"
         } ${isDragging ? "select-none" : ""} ${isScrolling ? "scrolling" : ""}`}
         style={{
           cursor: autoFit ? "default" : isDragging ? "grabbing" : "grab",
@@ -481,16 +484,11 @@ export default function PDFViewer({
           {/* Outer container: defines the correct scroll area size based on user's scale */}
           <div
             style={{
-              width: autoFit
-                ? "auto"
-                : !pageWidth
-                  ? "auto"
-                  : `${Math.ceil(pageWidth * scale) + 16}px`,
-              height: autoFit
-                ? "auto"
-                : !pageHeight
-                  ? "auto"
-                  : `${Math.ceil(pageHeight * scale) + 16}px`,
+              width: autoFit || !pageWidth ? "auto" : `${pageWidth * scale}px`,
+              height:
+                autoFit || !pageHeight ? "auto" : `${pageHeight * scale}px`,
+              padding: autoFit ? undefined : MANUAL_PAGE_PADDING,
+              boxSizing: autoFit ? undefined : "content-box",
               position: "relative",
               display: autoFit ? "flex" : "block",
               justifyContent: autoFit ? "center" : "initial",
@@ -498,32 +496,49 @@ export default function PDFViewer({
               margin: autoFit ? "auto" : "0 auto", // Center horizontally when smaller than viewport
             }}
           >
-            {/* Inner container: applies transform to scale the high-res rendered PDF */}
             <div
-              ref={pdfWrapperRef}
               style={{
-                filter: invertColors ? "invert(1) hue-rotate(180deg)" : "none",
-                transform: autoFit
-                  ? `scale(${autoFitScale / renderScale})` // Auto mode: scale from high-res to fit size
-                  : `scale(${scale / renderScale})`, // Manual mode: scale from high-res to user scale
-                transformOrigin: autoFit ? "center center" : "top left",
-                transition: "transform 0.05s ease-out",
-                willChange: "transform",
-                position: autoFit ? "static" : "absolute",
-                top: 2,
-                left: 2,
+                width:
+                  autoFit || !hasPageDimensions
+                    ? "auto"
+                    : `${pageWidth * scale}px`,
+                height:
+                  autoFit || !hasPageDimensions
+                    ? "auto"
+                    : `${pageHeight * scale}px`,
+                position: autoFit ? "static" : "relative",
               }}
-              className="pdf-page-wrapper"
             >
-              <Page
-                pageNumber={pageNumber}
-                scale={renderScale}
-                renderTextLayer={true}
-                renderAnnotationLayer={true}
-                className="shadow-lg"
-                devicePixelRatio={Math.max(window.devicePixelRatio || 1, 2)}
-                onLoadSuccess={onPageLoadSuccess}
-              />
+              {/* Inner container: applies transform to scale the high-res rendered PDF */}
+              <div
+                ref={pdfWrapperRef}
+                style={{
+                  filter: invertColors
+                    ? "invert(1) hue-rotate(180deg)"
+                    : "none",
+                  transform: autoFit
+                    ? `scale(${autoFitScale / renderScale})` // Auto mode: scale from high-res to fit size
+                    : `scale(${scale / renderScale})`, // Manual mode: scale from high-res to user scale
+                  transformOrigin: autoFit ? "center center" : "top left",
+                  transition: "transform 0.05s ease-out",
+                  willChange: "transform",
+                  position:
+                    autoFit || !hasPageDimensions ? "static" : "absolute",
+                  top: autoFit || !hasPageDimensions ? undefined : 0,
+                  left: autoFit || !hasPageDimensions ? undefined : 0,
+                }}
+                className="pdf-page-wrapper"
+              >
+                <Page
+                  pageNumber={pageNumber}
+                  scale={renderScale}
+                  renderTextLayer={true}
+                  renderAnnotationLayer={true}
+                  className="shadow-lg"
+                  devicePixelRatio={Math.max(window.devicePixelRatio || 1, 2)}
+                  onLoadSuccess={onPageLoadSuccess}
+                />
+              </div>
             </div>
           </div>
         </Document>
