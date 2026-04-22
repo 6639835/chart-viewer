@@ -21,6 +21,17 @@
 
 ---
 
+## [2.0.0] - 2026-04-22
+
+### 修复
+
+- **修复外部图表/CSV 目录无法保存的问题**：配置保存时不再要求图表目录和 CSV 目录位于应用根目录内
+  - 允许使用 `D:\Documents\csv`、`/Users/name/data/charts` 等已存在且可读的绝对路径
+  - 保留目录存在性、目录类型和读取权限检查，避免保存无效路径
+  - PDF 文件读取仍通过 `resolveSafePath()` 限制在已配置的图表目录内，防止请求路径逃逸
+
+---
+
 ## [1.8.0] - 2026-04-20
 
 ### 变更
@@ -1092,7 +1103,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v1.8.0...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/6639835/chart-viewer/compare/v1.8.0...v2.0.0
 [1.8.0]: https://github.com/6639835/chart-viewer/compare/v1.7.3...v1.8.0
 [1.7.3]: https://github.com/6639835/chart-viewer/compare/v1.7.2...v1.7.3
 [1.7.2]: https://github.com/6639835/chart-viewer/compare/v1.7.1...v1.7.2
