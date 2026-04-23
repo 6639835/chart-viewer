@@ -6,6 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import ChartList from "@/components/ChartList";
 import SettingsModal from "@/components/SettingsModal";
 import { getPDFFileName } from "@/lib/chartParser";
+import { getPdfUrl, loadGroupedCharts, openExternal } from "@/lib/tauriClient";
 import {
   CATEGORY_ORDER,
   type ChartCategory,
@@ -13,9 +14,6 @@ import {
   type GroupedCharts,
 } from "@/types/chart";
 import { Loader2 } from "lucide-react";
-
-// Force dynamic rendering - this page requires runtime data
-export const dynamic = "force-dynamic";
 
 // Dynamic import PDFViewer with SSR disabled (react-pdf requires browser APIs)
 const PDFViewer = nextDynamic(() => import("@/components/PDFViewer"), {
@@ -26,10 +24,6 @@ const PDFViewer = nextDynamic(() => import("@/components/PDFViewer"), {
     </div>
   ),
 });
-
-type ChartsApiResponse =
-  | { success: true; data: GroupedCharts }
-  | { success: false; error: string };
 
 function findAirportDiagramChart(charts: ChartData[]): ChartData | null {
   // Try exact match of "机场图" first.
@@ -97,18 +91,14 @@ export default function Home() {
   const loadCharts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/charts");
-      const data: ChartsApiResponse = await res.json();
-
-      if (!data.success) return;
-
-      setGroupedCharts(data.data);
-      const airportList = Object.keys(data.data).sort();
+      const data = await loadGroupedCharts();
+      setGroupedCharts(data);
+      const airportList = Object.keys(data).sort();
       setAirports(airportList);
 
       if (airportList.length > 0) {
         const firstAirport = airportList[0];
-        setSelectedAirportWithDiagram(firstAirport, data.data[firstAirport]);
+        setSelectedAirportWithDiagram(firstAirport, data[firstAirport]);
       }
     } catch (error) {
       console.error("Error loading charts:", error);
@@ -355,7 +345,7 @@ export default function Home() {
         <div className="w-full h-full overflow-hidden">
           {selectedChart ? (
             <PDFViewer
-              pdfUrl={`/api/pdf/${encodeURIComponent(getPDFFileName(selectedChart))}`}
+              pdfUrl={getPdfUrl(getPDFFileName(selectedChart))}
               chart={selectedChart}
               onOpenSidebar={() => setIsSidebarOpen(true)}
               bookmarkedCharts={bookmarkedChartsForCurrentAirport}
@@ -387,11 +377,9 @@ export default function Home() {
                   <button
                     onClick={() => {
                       const url = "https://github.com/6639835/chart-viewer";
-                      if (typeof window !== "undefined" && window.electronAPI) {
-                        window.electronAPI.openExternal(url);
-                      } else {
-                        window.open(url, "_blank", "noopener,noreferrer");
-                      }
+                      openExternal(url).catch((error) =>
+                        console.error("Error opening external URL:", error)
+                      );
                     }}
                     className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 inline-block mt-1 cursor-pointer"
                   >

@@ -7,7 +7,7 @@ const SIZES = {
   "icon-1024.png": 1024,
   "icon-512.png": 512,
   "icon-256.png": 256,
-  "icon.png": 1024, // Main icon for electron-builder
+  "icon.png": 1024, // Main icon for Tauri bundling
 };
 
 async function generateIcons() {

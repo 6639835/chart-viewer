@@ -21,6 +21,70 @@
 
 ---
 
+## [3.0.0] - 2026-04-23
+
+### 新增
+
+- **Tauri 2 桌面运行时**：将桌面壳从 Electron 迁移到 Tauri 2（破坏性变更）
+  - 新增 `src-tauri/` Rust 应用，负责桌面窗口、配置读写、图表 CSV 读取和 PDF 文件服务
+  - 新增 Tauri 插件集成：`dialog`、`opener`、`process`、`updater`
+  - 新增 `lib/tauriClient.ts` 作为前端与 Tauri 命令/插件的统一桥接层
+  - 新增 `chart-pdf://localhost/...` 自定义协议，用于在桌面应用内加载 PDF
+- **Tauri 自动更新支持**：使用 Tauri updater 替代 Electron updater
+  - 更新通知组件改为调用 Tauri updater 检查、下载、安装并重启应用
+  - 新增 `latest.json` 更新端点配置和 Tauri updater 公钥配置
+  - CI 构建时生成 Tauri updater artifacts，支持签名密钥环境变量
+- **Tauri 构建脚本**：新增跨平台 Tauri 构建命令
+  - `npm run tauri:dev`
+  - `npm run tauri:build`
+  - `npm run tauri:build:mac`
+  - `npm run tauri:build:win`
+  - `npm run tauri:build:linux`
+
+### 变更
+
+- **应用架构改为静态 Next.js 前端 + Tauri 后端**：
+  - `next.config.js` 启用 `output: "export"`，生产构建不再启动本地 Next.js 服务
+  - 图表数据加载从 `/api/charts` 改为 Tauri `read_chart_sources` 命令
+  - PDF 加载从 `/api/pdf/...` 改为 `chart-pdf` 自定义协议
+  - 配置读取和保存从 Next.js API 路由改为 Tauri `get_config` / `save_config` 命令
+- **设置页面桌面化**：
+  - 目录选择统一使用 Tauri 原生目录选择器
+  - 应用版本号改为从 Tauri 应用元数据读取
+  - GitHub 外部链接改为通过 Tauri opener 插件打开
+  - 配置文件保存位置改为 Tauri 应用数据目录
+- **CI/CD 构建流程迁移到 Tauri**：
+  - GitHub Actions 新增 Rust toolchain 初始化
+  - Linux 构建新增 WebKitGTK、appindicator、rsvg、patchelf 等 Tauri 依赖安装
+  - 构建流程改为先执行 `npm run lint`，再执行 `npm run tauri:build`
+  - 构建产物路径改为 `src-tauri/target/release/bundle/**/*`
+- **文档更新**：
+  - README 和 CONTRIBUTING 改为 Tauri 开发、构建和发布说明
+  - 前置要求更新为 Node.js 22、npm、Rust stable 和 Tauri 平台依赖
+  - 发布说明新增 Tauri updater 签名密钥配置
+
+### 移除
+
+- **Electron 运行时和构建体系**：
+  - 移除 `electron/` 主进程、preload 脚本和 `electron-dev.js`
+  - 移除 Electron 相关 npm 脚本和 `electron-builder` 配置
+  - 移除 `electron`、`electron-builder`、`electron-updater`、`concurrently`、`cross-env`、`wait-on` 等依赖
+  - 移除 `types/electron.d.ts`
+- **Next.js 服务端 API 层**：
+  - 移除 `/api/browse`、`/api/charts`、`/api/config`、`/api/pdf`、`/api/version` 路由
+  - 移除 Node.js 侧的 `lib/configManager.ts` 和 `lib/pathSafety.ts`
+  - 移除浏览器内目录浏览器回退界面
+- **独立 Web 生产运行方式**：移除 `npm start` 和 Electron 时代的本地 Next.js 生产服务器启动流程
+
+### 安全
+
+- **PDF 访问边界迁移到 Tauri 协议层**：
+  - `chart-pdf` 协议在 Rust 侧对图表目录和候选 PDF 路径进行 canonical path 校验
+  - 保留扁平目录、ICAO 子目录和中文文件名变体查找逻辑，同时防止路径逃逸
+- **桌面权限收敛**：通过 Tauri capabilities 只声明应用需要的核心、目录选择、外部链接、进程重启和更新权限
+
+---
+
 ## [2.0.0] - 2026-04-22
 
 ### 修复
@@ -1103,7 +1167,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v2.0.0...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/6639835/chart-viewer/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/6639835/chart-viewer/compare/v1.8.0...v2.0.0
 [1.8.0]: https://github.com/6639835/chart-viewer/compare/v1.7.3...v1.8.0
 [1.7.3]: https://github.com/6639835/chart-viewer/compare/v1.7.2...v1.7.3

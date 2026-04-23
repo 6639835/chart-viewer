@@ -32,7 +32,9 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 ### Prerequisites
 
 - Node.js 22.0.0 or higher
-- npm or yarn package manager
+- npm
+- Rust stable toolchain
+- Tauri platform prerequisites for your OS
 - Git
 
 ### Installation
@@ -50,15 +52,10 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
    npm install
    ```
 
-3. Start the development server:
+3. Start the Tauri desktop app:
 
    ```bash
-   npm run dev
-   ```
-
-4. For Electron development:
-   ```bash
-   npm run electron:dev
+   npm run tauri:dev
    ```
 
 ### Project Structure
@@ -66,13 +63,12 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 ```
 chart-viewer/
 ├── app/                    # Next.js app directory
-│   ├── api/               # API routes
 │   ├── globals.css        # Global styles
 │   ├── layout.tsx         # Root layout
 │   └── page.tsx           # Home page
 ├── components/             # React components
-├── electron/              # Electron main process
 ├── lib/                   # Utility libraries
+├── src-tauri/             # Tauri Rust desktop application
 ├── public/                 # Static assets
 ├── scripts/               # Build and utility scripts
 ├── types/                 # TypeScript type definitions
@@ -203,7 +199,7 @@ Before submitting a PR, please test:
 - [ ] No console errors or warnings
 - [ ] Responsive design works on different screen sizes
 - [ ] Dark/light theme switching works
-- [ ] Electron app builds and runs correctly
+- [ ] Tauri app builds and runs correctly
 
 ### Testing Checklist
 

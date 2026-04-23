@@ -14,8 +14,9 @@
 /build
 /dist
 
-# electron builder
-/dist_electron
+# tauri
+/src-tauri/target/
+/src-tauri/gen/
 
 # misc
 .DS_Store
@@ -48,4 +49,3 @@ public/icon-*.png
 # Don't ignore icon.ico and icon.icns (needed for builds)
 !public/icon.ico
 !public/icon.icns
-

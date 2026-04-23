@@ -14,6 +14,8 @@ export default [
       "out/**",
       "dist/**",
       "build/**",
+      "src-tauri/target/**",
+      "src-tauri/gen/**",
     ],
   },
   
@@ -54,12 +56,10 @@ export default [
     },
   },
   
-  // Node.js files (electron, scripts, config files)
+  // Node.js files (scripts and config files)
   {
     files: [
-      "electron/**/*.js",
       "scripts/**/*.js",
-      "electron-dev.js",
       "*.config.js",
       "postcss.config.js",
       "next.config.js",

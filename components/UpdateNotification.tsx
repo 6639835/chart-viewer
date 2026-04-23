@@ -1,8 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Download, RefreshCw, AlertCircle, Rocket } from "lucide-react";
-import type { UpdateInfo, DownloadProgress } from "@/types/electron";
+import { AlertCircle, Download, RefreshCw, Rocket, X } from "lucide-react";
+import {
+  checkForUpdate,
+  downloadUpdate,
+  installUpdate,
+  openExternal,
+  type DownloadProgress,
+  type UpdateInfo,
+} from "@/lib/tauriClient";
 
 type Phase =
   | "idle"
@@ -20,53 +27,29 @@ export default function UpdateNotification() {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.electronAPI?.updater) {
-      return;
-    }
-
-    const updater = window.electronAPI.updater;
-
-    const cleanupChecking = updater.onChecking(() => {
+    const timeout = window.setTimeout(() => {
       setPhase("checking");
       setError(null);
-    });
 
-    const cleanupAvailable = updater.onUpdateAvailable((info: UpdateInfo) => {
-      setUpdateInfo(info);
-      setPhase("available");
-      setDismissed(false);
-    });
+      checkForUpdate()
+        .then((info) => {
+          if (!info) {
+            setPhase("idle");
+            return;
+          }
 
-    const cleanupNotAvailable = updater.onUpdateNotAvailable(() => {
-      setPhase("idle");
-    });
+          setUpdateInfo(info);
+          setPhase("available");
+          setDismissed(false);
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : String(err));
+          setPhase("error");
+          setDismissed(false);
+        });
+    }, 5000);
 
-    const cleanupProgress = updater.onDownloadProgress(
-      (p: DownloadProgress) => {
-        setProgress(p);
-        setPhase("downloading");
-      }
-    );
-
-    const cleanupDownloaded = updater.onUpdateDownloaded((info: UpdateInfo) => {
-      setUpdateInfo(info);
-      setPhase("downloaded");
-    });
-
-    const cleanupError = updater.onError((errorMsg: string) => {
-      setError(errorMsg);
-      setPhase("error");
-      setDismissed(false);
-    });
-
-    return () => {
-      cleanupChecking();
-      cleanupAvailable();
-      cleanupNotAvailable();
-      cleanupProgress();
-      cleanupDownloaded();
-      cleanupError();
-    };
+    return () => window.clearTimeout(timeout);
   }, []);
 
   const handleDismiss = () => {
@@ -74,29 +57,41 @@ export default function UpdateNotification() {
   };
 
   const handleDownload = async () => {
-    if (!window.electronAPI?.updater) return;
     setPhase("downloading");
     setProgress(null);
+
     try {
-      await window.electronAPI.updater.downloadUpdate();
-    } catch {
-      // error event from main process will set the error state
+      const info = await downloadUpdate(setProgress);
+      if (info) {
+        setUpdateInfo(info);
+        setPhase("downloaded");
+      } else {
+        setPhase("idle");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("error");
+      setDismissed(false);
     }
   };
 
   const handleInstall = async () => {
-    if (!window.electronAPI?.updater) return;
-    await window.electronAPI.updater.installUpdate();
+    try {
+      await installUpdate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("error");
+      setDismissed(false);
+    }
   };
 
   const handleOpenGitHub = () => {
-    const releaseUrl =
-      "https://github.com/6639835/chart-viewer/releases/latest";
-    if (window.electronAPI) {
-      window.electronAPI.openExternal(releaseUrl);
-    } else {
-      window.open(releaseUrl, "_blank", "noopener,noreferrer");
-    }
+    openExternal(
+      "https://github.com/6639835/chart-viewer/releases/latest"
+    ).catch((err) => {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("error");
+    });
   };
 
   if (dismissed || phase === "idle" || phase === "checking") {
@@ -108,7 +103,6 @@ export default function UpdateNotification() {
   return (
     <div className="fixed bottom-4 right-4 z-50 w-80">
       <div className="bg-white dark:bg-gray-800 shadow-xl rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-        {/* Header */}
         <div className="flex items-start justify-between p-4 pb-3">
           <div className="flex items-center gap-2">
             {phase === "error" ? (
@@ -141,7 +135,6 @@ export default function UpdateNotification() {
           )}
         </div>
 
-        {/* Content */}
         <div className="px-4 pb-4 space-y-3">
           {phase === "error" && (
             <>

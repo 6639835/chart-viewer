@@ -8,9 +8,9 @@ A modern Electronic Flight Bag (EFB) style chart viewer for aviation charts.
 - 🛫 **Multi-Airport Support**: Easy switching between different airports
 - 📁 **Smart Categorization**: Charts organized by type (STAR, APP, TAXI, SID, OTHER, 细则)
 - 📄 **PDF Viewer**: Built-in PDF viewer with zoom and navigation controls
-- ⚙️ **Configurable Directories**: Web-based interface to select charts and CSV directories
+- ⚙️ **Configurable Directories**: Native desktop picker for chart and CSV directories
 - 🎨 **Modern UI**: Clean, professional EFB-style interface
-- 🚀 **Fast Performance**: Next.js powered for optimal speed
+- 🚀 **Fast Performance**: Tauri desktop shell with a static Next.js frontend
 
 ## Categories
 
@@ -25,8 +25,10 @@ A modern Electronic Flight Bag (EFB) style chart viewer for aviation charts.
 
 ### Prerequisites
 
-- Node.js 18+
-- npm or yarn
+- Node.js 22+
+- npm
+- Rust stable toolchain
+- Tauri platform prerequisites for your OS
 
 ### Installation
 
@@ -38,62 +40,43 @@ npm install
 npm run generate-icons
 ```
 
-### Running the Development Server
-
-#### Web Mode (Browser)
+### Running the Desktop App
 
 ```bash
-npm run dev
+npm run tauri:dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-#### Desktop Mode (Electron)
-
-```bash
-npm run electron:dev
-```
-
-This will start the Next.js dev server and launch the desktop application with native system dialogs for directory selection.
+This starts the Next.js dev server and launches the Tauri desktop application.
 
 ### Configuring Data Directories
 
 The application uses `charts/` and `csv/` directories by default. To use different directories:
 
 1. Click the **Settings** icon (⚙️) in the sidebar
-2. Use the **Browse** button to:
-   - **Desktop Mode**: Opens native system file picker (Finder on macOS)
-   - **Web Mode**: Use web-based directory browser
+2. Use the **Browse** button to open the native system directory picker
 3. Enter paths (relative to project root or absolute paths):
    - **Charts Directory**: Directory containing PDF chart files
    - **CSV Directory**: Directory containing `Charts.csv` file
 4. Click **Save Changes**
 
-Configuration is saved to `config.json` in the project root.
+Configuration is saved to `config.json` in the Tauri app data directory.
 
 ### Building for Production
-
-#### Web Version
-
-```bash
-npm run build
-npm start
-```
 
 #### Desktop Application (Local Build)
 
 ```bash
 # Build for macOS
-npm run electron:build:mac
+npm run tauri:build:mac
 
 # Build for Windows
-npm run electron:build:win
+npm run tauri:build:win
 
 # Build for Linux
-npm run electron:build:linux
+npm run tauri:build:linux
 ```
 
-Built applications will be in the `dist/` directory.
+Built applications will be in `src-tauri/target/release/bundle/`.
 
 #### Desktop Application (Automated Build & Release)
 
@@ -119,8 +102,8 @@ git push --tags
 
 **Supported Platforms:**
 
-- **macOS**: DMG installer + ZIP archive
-- **Windows**: NSIS installer + Portable executable
+- **macOS**: DMG installer + app bundle
+- **Windows**: NSIS installer
 - **Linux**: AppImage + DEB package
 
 **Download Options:**
@@ -128,7 +111,13 @@ git push --tags
 - Artifacts available in GitHub Actions (7-14 days)
 - Releases published at: `https://github.com/6639835/chart-viewer/releases`
 
-For detailed release documentation, see [`.github/workflows/README.md`](.github/workflows/README.md).
+**Updater signing:**
+
+Tauri updater artifacts require `TAURI_SIGNING_PRIVATE_KEY` and, when applicable, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` GitHub Actions secrets. Generate a key with:
+
+```bash
+npx tauri signer generate -w tauri-updater.key
+```
 
 ### macOS Installation (Unsigned App)
 
@@ -150,11 +139,6 @@ xattr -cr "/Applications/Chart Viewer.app"
 ```
 chart-viewer/
 ├── app/                    # Next.js app directory
-│   ├── api/               # API routes
-│   │   ├── charts/        # Chart data API
-│   │   ├── pdf/           # PDF serving API
-│   │   ├── config/        # Configuration API
-│   │   └── browse/        # Directory browsing API
 │   ├── globals.css        # Global styles
 │   ├── layout.tsx         # Root layout
 │   └── page.tsx           # Home page
@@ -163,21 +147,20 @@ chart-viewer/
 │   ├── ChartList.tsx      # Chart list display
 │   ├── PDFViewer.tsx      # PDF viewer component
 │   └── SettingsModal.tsx  # Settings configuration
-├── electron/              # Electron application
-│   ├── main.js           # Main process (app lifecycle)
-│   └── preload.js        # Preload script (IPC bridge)
 ├── lib/                   # Utility functions
 │   ├── chartParser.ts     # CSV parsing logic
-│   └── configManager.ts   # Configuration management
+│   └── tauriClient.ts     # Tauri command/plugin bridge
+├── src-tauri/             # Tauri Rust desktop application
+│   ├── src/lib.rs         # Commands, config, chart IO, PDF protocol
+│   └── tauri.conf.json    # Tauri app and bundle configuration
 ├── types/                 # TypeScript types
 │   ├── chart.ts           # Chart data types
-│   ├── config.ts          # Configuration types
-│   └── electron.d.ts      # Electron API types
+│   └── config.ts          # Configuration types
 ├── csv/                   # CSV data files
 │   └── Charts.csv         # Chart metadata
 ├── charts/                # PDF files
 │   └── *.pdf              # Chart PDFs
-└── config.json            # User configuration (generated)
+└── out/                   # Static Next.js export (generated)
 ```
 
 ## Data Format
@@ -221,7 +204,8 @@ charts/
 
 ## Technologies Used
 
-- **Next.js 14**: React framework with App Router
+- **Tauri 2**: Native desktop shell and local filesystem bridge
+- **Next.js 16**: React framework with App Router static export
 - **TypeScript**: Type-safe development
 - **Tailwind CSS**: Utility-first styling
 - **React-PDF**: PDF rendering

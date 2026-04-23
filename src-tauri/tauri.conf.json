@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Chart Viewer",
+  "version": "2.0.0",
+  "identifier": "com.chartviewer.efb",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../out"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Chart Viewer - EFB",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 768,
+        "backgroundColor": "#ffffff"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost chart-pdf: http://chart-pdf.localhost https://github.com https://api.github.com; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; frame-src 'self' blob: chart-pdf: http://chart-pdf.localhost; object-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Utility",
+    "icon": ["../public/icon.png", "../public/icon.ico", "../public/icon.icns"],
+    "macOS": {
+      "hardenedRuntime": false,
+      "signingIdentity": null
+    }
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/6639835/chart-viewer/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVENDc0RkM2M0I4NUUKUldSZXVHUDhkTlFPQUg3WGxrZDBWVFRudUNYNmxIMDNOS0t6L3BrVUNMTXJzdFF1eEdVNjlKY24K"
+    }
+  }
+}
