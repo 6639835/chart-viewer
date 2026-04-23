@@ -21,6 +21,30 @@
 
 ---
 
+## [3.0.1] - 2026-04-23
+
+### 变更
+
+- **发布流程收敛为仅上传实际安装包和签名文件**：
+  - GitHub Actions 的 `build.yml` 与 `pre-release.yml` 不再上传 `bundle/**/*` 下的所有展开文件
+  - Release 阶段改为只上传 `.dmg`、`.app.tar.gz`、`.AppImage`、`.deb`、`.rpm`、`.msi`、`setup.exe`、`.sig` 和 `latest*.json`
+  - 避免将 `.deb`、`.rpm`、`.app` 内部的中间文件错误发布到 GitHub Release
+
+### 修复
+
+- **修复 GitHub Release 资产上传失败问题**：
+  - 解决 `softprops/action-gh-release` 误上传内部文件（如 `libpixbufloader-icns.so`）导致的 `404 Not Found`
+  - 使正式版和预发布版工作流的发布资产集合与 Tauri 构建产物保持一致
+- **修复 Tauri 安装包版本号未同步问题**：
+  - 将 `src-tauri/tauri.conf.json` 和 `src-tauri/Cargo.toml` 的版本同步到 `3.0.0`
+  - 更新 `scripts/release.sh`，在执行版本升级时自动同步 `package.json`、Tauri 配置和 Rust crate 版本
+  - 避免标签版本与最终产物文件名不一致
+- **修复 updater 密钥文件易被误加入版本控制的问题**：
+  - `.gitignore` 新增 `tauri-updater.key` 和 `tauri-updater.key.pub`
+  - 降低本地生成签名密钥后误提交到仓库的风险
+
+---
+
 ## [3.0.0] - 2026-04-23
 
 ### 新增
@@ -1167,7 +1191,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v3.0.0...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v3.0.1...HEAD
+[3.0.1]: https://github.com/6639835/chart-viewer/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/6639835/chart-viewer/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/6639835/chart-viewer/compare/v1.8.0...v2.0.0
 [1.8.0]: https://github.com/6639835/chart-viewer/compare/v1.7.3...v1.8.0

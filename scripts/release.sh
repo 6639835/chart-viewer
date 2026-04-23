@@ -100,6 +100,26 @@ else
     new_version="v$custom_version"
 fi
 
+version_number="${new_version#v}"
+
+# 同步 Tauri/Rust 版本，确保安装包与标签版本一致
+node -e '
+const fs = require("fs");
+const version = process.argv[1];
+const tauriConfigPath = "src-tauri/tauri.conf.json";
+const cargoTomlPath = "src-tauri/Cargo.toml";
+
+const tauriConfig = JSON.parse(fs.readFileSync(tauriConfigPath, "utf8"));
+tauriConfig.version = version;
+fs.writeFileSync(tauriConfigPath, JSON.stringify(tauriConfig, null, 2) + "\n");
+
+const cargoToml = fs.readFileSync(cargoTomlPath, "utf8").replace(
+  /^version = ".*"$/m,
+  `version = "${version}"`
+);
+fs.writeFileSync(cargoTomlPath, cargoToml);
+' "$version_number"
+
 echo -e "新版本: ${GREEN}${new_version}${NC}"
 
 # 更新日志 (可选)
@@ -122,13 +142,13 @@ echo
 
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     # 恢复版本号
-    git checkout package.json package-lock.json 2>/dev/null || true
+    git checkout package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml 2>/dev/null || true
     echo -e "${YELLOW}已取消发布${NC}"
     exit 1
 fi
 
 # 提交更改
-git add package.json package-lock.json
+git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
 git commit -m "chore: bump version to ${new_version}"
 
 # 创建标签
