@@ -21,6 +21,59 @@
 
 ---
 
+## [3.1.0] - 2026-04-24
+
+### 新增
+
+- **Tauri updater manifest 自动生成脚本**：
+  - 新增 `scripts/generate-tauri-updater-manifest.js`，在发布阶段根据构建产物和 `.sig` 签名生成 `latest.json`
+  - 支持 macOS、Linux 和 Windows 安装包的 updater 平台键生成，并校验每个 updater 包都有对应签名文件
+  - 正式版和预发布版工作流都会在创建 GitHub Release 前生成并上传顶层 `artifacts/latest.json`
+- **PDF 协议层支持字节范围请求和路径缓存**：
+  - `chart-pdf` 自定义协议新增 `Range` 请求解析，支持返回 `206 Partial Content` 和 `416` 范围错误
+  - PDF 响应新增 `Accept-Ranges`、`Content-Length`、`Content-Range` 等头信息，改善 PDF.js 加载行为
+  - Rust 侧缓存已解析的 PDF 路径，并在保存配置后清空缓存，减少重复文件查找开销
+
+### 变更
+
+- **PDF 查看器改为直接使用 PDF.js 渲染**：
+  - 移除 `react-pdf` 组件层，改为通过 `pdfjs-dist` 手动加载文档、缓存页面并渲染到 `<canvas>`
+  - 引入渲染任务取消、相邻页面预加载、页面缓存裁剪和渲染延迟稳定策略，降低快速缩放/翻页时的卡顿和竞态
+  - 手动缩放支持以鼠标位置或视口中心为锚点保持滚动位置，缩放范围统一为 `50%` 到 `300%`
+  - 根据页面尺寸、缩放比例和设备像素比限制 canvas 像素数量，避免高缩放下内存占用失控
+  - PDF 加载时校验 `%PDF` 文件头，错误日志补充图表 ID、名称、类型、页码和 URL 信息
+- **图表解析与名称格式化逻辑整理**：
+  - 抽取通用 CSV 解析、图表文件引用检查、`Y/N` 标记归一化和图表类型分类辅助逻辑
+  - APP、SID、STAR 图表名称格式化改为更集中、可复用的 token 处理逻辑
+  - `CHART_TYPE_MAPPING` 改为基于已知图表类型的强类型映射，并新增 `getChartCategory()` 分类入口
+- **自动更新客户端状态管理收敛**：
+  - 将 pending update、下载开始时间、已下载字节数和总大小集中到单一 `updateState`
+  - 下载进度百分比限制在 `100%` 以内，避免进度显示超出范围
+- **发布流程调整**：
+  - GitHub Release 上传固定的顶层 `latest.json`，不再从构建产物目录中匹配 `latest*.json`
+  - Release job 新增 checkout 步骤，确保 manifest 生成脚本可用
+
+### 移除
+
+- **移除 `react-pdf` 依赖**：
+  - `package.json` 和 `package-lock.json` 删除 `react-pdf` 及其传递依赖
+  - `pdfjs-dist` 作为直接依赖保留，用于 PDF 查看器自定义渲染
+
+### 修复
+
+- **修复大型或远程 PDF 加载兼容性问题**：
+  - 通过协议层字节范围请求支持，改善 PDF.js 对 PDF 文件的分段读取和加载稳定性
+  - PDF 路径缓存会在配置保存后失效，避免切换图表目录后继续命中过期路径
+- **修复手动缩放滚动体验问题**：
+  - 缩放后保持用户当前查看区域，减少放大/缩小时跳回页面边缘的问题
+  - 自动适配模式下禁用普通滚轮滚动，手动模式下继续支持拖拽平移和自动隐藏滚动条
+- **修复侧边栏分类选择对当前图表的影响**：
+  - 当没有书签图表可跳转时，打开分类列表不再清空当前选中的图表
+- **修复自动隐藏滚动条状态清理问题**：
+  - 禁用 hook 或组件卸载时会清理隐藏定时器并重置滚动状态，避免状态残留
+
+---
+
 ## [3.0.1] - 2026-04-23
 
 ### 变更
@@ -1191,7 +1244,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v3.0.1...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/6639835/chart-viewer/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/6639835/chart-viewer/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/6639835/chart-viewer/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/6639835/chart-viewer/compare/v1.8.0...v2.0.0

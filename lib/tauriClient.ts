@@ -43,10 +43,47 @@ interface ChartSourcesResponse {
   sources: ChartSource[];
 }
 
-let pendingUpdate: Update | null = null;
-let downloadStartedAt = 0;
-let downloadedBytes = 0;
-let downloadTotal = 0;
+type UpdateState = {
+  pending: Update | null;
+  downloadStartedAt: number;
+  downloadedBytes: number;
+  downloadTotal: number;
+};
+
+const updateState: UpdateState = {
+  pending: null,
+  downloadStartedAt: 0,
+  downloadedBytes: 0,
+  downloadTotal: 0,
+};
+
+function parseChartSource(source: ChartSource) {
+  if (source.format === "old") {
+    return parseCSV(source.content);
+  }
+
+  return parsePerAirportCSV(source.content, source.airportIcao ?? "");
+}
+
+function getDownloadProgress(): DownloadProgress {
+  const elapsedSeconds = Math.max(
+    (Date.now() - updateState.downloadStartedAt) / 1000,
+    1
+  );
+
+  return {
+    bytesPerSecond: updateState.downloadedBytes / elapsedSeconds,
+    percent:
+      updateState.downloadTotal > 0
+        ? Math.min(
+            (updateState.downloadedBytes / updateState.downloadTotal) * 100,
+            100
+          )
+        : 0,
+    transferred: updateState.downloadedBytes,
+    total: updateState.downloadTotal,
+  };
+}
 
 export async function getConfig(): Promise<AppConfig> {
   return invoke<AppConfig>("get_config");
@@ -58,14 +95,7 @@ export async function saveConfig(config: AppConfig): Promise<AppConfig> {
 
 export async function loadGroupedCharts(): Promise<GroupedCharts> {
   const response = await invoke<ChartSourcesResponse>("read_chart_sources");
-  const charts = response.sources.flatMap((source) => {
-    if (source.format === "old") {
-      return parseCSV(source.content);
-    }
-
-    return parsePerAirportCSV(source.content, source.airportIcao ?? "");
-  });
-
+  const charts = response.sources.flatMap(parseChartSource);
   return groupChartsByAirport(charts);
 }
 
@@ -97,64 +127,61 @@ export async function openExternal(url: string): Promise<void> {
 }
 
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
-  pendingUpdate = await check();
-  if (!pendingUpdate) {
+  updateState.pending = await check();
+  const update = updateState.pending;
+  if (!update) {
     return null;
   }
 
   return {
-    version: pendingUpdate.version,
-    releaseDate: pendingUpdate.date,
-    releaseNotes: pendingUpdate.body,
+    version: update.version,
+    releaseDate: update.date,
+    releaseNotes: update.body,
   };
 }
 
 export async function downloadUpdate(
   onProgress: (progress: DownloadProgress) => void
 ): Promise<UpdateInfo | null> {
-  if (!pendingUpdate) {
-    pendingUpdate = await check();
+  if (!updateState.pending) {
+    updateState.pending = await check();
   }
 
-  if (!pendingUpdate) {
+  const update = updateState.pending;
+  if (!update) {
     return null;
   }
 
-  downloadStartedAt = Date.now();
-  downloadedBytes = 0;
-  downloadTotal = 0;
+  updateState.downloadStartedAt = Date.now();
+  updateState.downloadedBytes = 0;
+  updateState.downloadTotal = 0;
 
-  await pendingUpdate.download((event: DownloadEvent) => {
+  await update.download((event: DownloadEvent) => {
     if (event.event === "Started") {
-      downloadTotal = event.data.contentLength ?? 0;
-      downloadedBytes = 0;
+      updateState.downloadTotal = event.data.contentLength ?? 0;
+      updateState.downloadedBytes = 0;
     }
 
     if (event.event === "Progress") {
-      downloadedBytes += event.data.chunkLength;
+      updateState.downloadedBytes += event.data.chunkLength;
     }
 
-    const elapsedSeconds = Math.max((Date.now() - downloadStartedAt) / 1000, 1);
-    onProgress({
-      bytesPerSecond: downloadedBytes / elapsedSeconds,
-      percent: downloadTotal > 0 ? (downloadedBytes / downloadTotal) * 100 : 0,
-      transferred: downloadedBytes,
-      total: downloadTotal,
-    });
+    onProgress(getDownloadProgress());
   });
 
   return {
-    version: pendingUpdate.version,
-    releaseDate: pendingUpdate.date,
-    releaseNotes: pendingUpdate.body,
+    version: update.version,
+    releaseDate: update.date,
+    releaseNotes: update.body,
   };
 }
 
 export async function installUpdate(): Promise<void> {
-  if (!pendingUpdate) {
+  const update = updateState.pending;
+  if (!update) {
     return;
   }
 
-  await pendingUpdate.install();
+  await update.install();
   await relaunch();
 }

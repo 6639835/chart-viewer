@@ -15,7 +15,7 @@ import {
 } from "@/types/chart";
 import { Loader2 } from "lucide-react";
 
-// Dynamic import PDFViewer with SSR disabled (react-pdf requires browser APIs)
+// Dynamic import PDFViewer with SSR disabled (PDF.js requires browser APIs)
 const PDFViewer = nextDynamic(() => import("@/components/PDFViewer"), {
   ssr: false,
   loading: () => (
@@ -162,9 +162,8 @@ export default function Home() {
       setSelectedChart(chartToSelect);
       setSelectedCategory(null);
     } else {
-      // No bookmarked charts, open the list
+      // No bookmarked charts, open the list over the current chart.
       setSelectedCategory(category);
-      setSelectedChart(null);
     }
   };
 

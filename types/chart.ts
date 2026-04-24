@@ -34,13 +34,29 @@ export interface AirportInfo {
 
 export type ChartCategory = "STAR" | "APP" | "TAXI" | "SID" | "OTHER" | "细则";
 
+export const KNOWN_CHART_TYPES = [
+  "机场细则",
+  "其他",
+  "机场图_停机位置图",
+  "标准仪表进场图",
+  "标准仪表离场图",
+  "仪表进近图_ILS",
+  "进近图_RNAV_RNP_RADAR_GPS_GNSS",
+  "机场障碍物图_精密进近地形图",
+  "仪表进近图_VOR",
+  "仪表进近图_NDB",
+  "最低监视引导高度图_放油区图",
+] as const;
+
+export type KnownChartType = (typeof KNOWN_CHART_TYPES)[number];
+
 export interface GroupedCharts {
   [airport: string]: {
     [category in ChartCategory]?: ChartData[];
   };
 }
 
-export const CHART_TYPE_MAPPING: Record<string, ChartCategory> = {
+export const CHART_TYPE_MAPPING: Record<KnownChartType, ChartCategory> = {
   机场细则: "细则",
   其他: "OTHER",
   机场图_停机位置图: "TAXI",
@@ -53,6 +69,10 @@ export const CHART_TYPE_MAPPING: Record<string, ChartCategory> = {
   仪表进近图_NDB: "APP",
   最低监视引导高度图_放油区图: "OTHER",
 };
+
+export function getChartCategory(chartType: string): ChartCategory | null {
+  return CHART_TYPE_MAPPING[chartType as KnownChartType] ?? null;
+}
 
 export const CATEGORY_ORDER: ChartCategory[] = [
   "STAR",

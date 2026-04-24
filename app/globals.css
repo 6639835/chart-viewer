@@ -75,13 +75,16 @@ body {
 }
 
 /* PDF rendering quality improvements */
-.pdf-page-wrapper canvas {
-  /* Improve rendering quality for PDF canvas */
+.pdf-viewer-scroll {
+  overflow-anchor: none;
+}
+
+.pdf-canvas {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   image-rendering: auto;
-  transform: translateZ(0);
   backface-visibility: hidden;
+  overflow-anchor: none;
 }
 
 /* Auto-hide scrollbar - only show when scrolling */

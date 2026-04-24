@@ -1,58 +1,63 @@
 import {
   ChartData,
   GroupedCharts,
-  CHART_TYPE_MAPPING,
-  ChartCategory,
   PerAirportChartData,
   AirportInfo,
+  getChartCategory,
 } from "@/types/chart";
 import Papa from "papaparse";
 
-export function parseCSV(csvContent: string): ChartData[] {
-  const result = Papa.parse<ChartData>(csvContent, {
+const AIRPORT_DETAIL_TYPE = "机场细则";
+const SUPPLEMENT_FLAG = "Y";
+
+const FORCE_OTHER_CHART_NAMES = new Set(["航路点坐标", "数据库编码"]);
+
+function parseRows<T>(csvContent: string): T[] {
+  return Papa.parse<T>(csvContent, {
     header: true,
     skipEmptyLines: true,
-  });
+  }).data;
+}
 
-  // Filter out invalid rows, but allow empty PAGE_NUMBER for 机场细则
-  return result.data.filter((row: ChartData) => {
-    if (!row.AirportIcao) return false;
-    // 机场细则 doesn't have PAGE_NUMBER, but has ChartName
-    if (row.ChartTypeEx_CH === "机场细则") {
-      return !!row.ChartName;
-    }
-    return !!row.PAGE_NUMBER;
-  });
+function hasChartFileReference(row: {
+  ChartName: string;
+  ChartTypeEx_CH: string;
+  PAGE_NUMBER: string;
+}): boolean {
+  if (row.ChartTypeEx_CH === AIRPORT_DETAIL_TYPE) {
+    return row.ChartName.trim().length > 0;
+  }
+
+  return row.PAGE_NUMBER.trim().length > 0;
+}
+
+function toYesNo(value: string): "Y" | "N" {
+  return value === "True" || value === "Y" ? "Y" : "N";
+}
+
+export function parseCSV(csvContent: string): ChartData[] {
+  return parseRows<ChartData>(csvContent).filter(
+    (row) => row.AirportIcao.trim().length > 0 && hasChartFileReference(row)
+  );
 }
 
 export function parsePerAirportCSV(
   csvContent: string,
   airportIcao: string
 ): ChartData[] {
-  const result = Papa.parse<PerAirportChartData>(csvContent, {
-    header: true,
-    skipEmptyLines: true,
-  });
+  const normalizedAirportIcao = airportIcao.trim().toUpperCase();
+  if (!normalizedAirportIcao) {
+    return [];
+  }
 
-  // Convert per-airport format to standard ChartData format
-  return result.data
-    .filter((row: PerAirportChartData) => {
-      // 机场细则 doesn't have PAGE_NUMBER, but has ChartName
-      if (row.ChartTypeEx_CH === "机场细则") {
-        return !!row.ChartName;
-      }
-      return !!row.PAGE_NUMBER;
-    })
-    .map((row: PerAirportChartData) => {
-      // Generate a unique ChartId based on airport ICAO and PAGE_NUMBER
-      // For 机场细则 without PAGE_NUMBER, use ChartName
-      const uniqueId = row.PAGE_NUMBER
-        ? `${airportIcao}-${row.PAGE_NUMBER}`
-        : `${airportIcao}-${row.ChartName}`;
+  return parseRows<PerAirportChartData>(csvContent)
+    .filter(hasChartFileReference)
+    .map((row) => {
+      const chartKey = row.PAGE_NUMBER || row.ChartName;
 
       return {
-        ChartId: uniqueId,
-        AirportIcao: airportIcao,
+        ChartId: `${normalizedAirportIcao}-${chartKey}`,
+        AirportIcao: normalizedAirportIcao,
         AirportIata: "",
         CityName: "",
         AirportName: "",
@@ -65,20 +70,17 @@ export function parsePerAirportCSV(
         MD5: "",
         AD_HP_ID: "",
         PAGE_NUMBER: row.PAGE_NUMBER,
-        IS_SUP: row.IS_SUP === "True" ? "Y" : "N",
+        IS_SUP: toYesNo(row.IS_SUP),
         SUP_REF_CHARTID: "",
-        IS_MODIFIED: row.IsModify === "True" ? "Y" : "N",
+        IS_MODIFIED: toYesNo(row.IsModify),
       };
     });
 }
 
 export function parseAirportsCSV(csvContent: string): AirportInfo[] {
-  const result = Papa.parse<AirportInfo>(csvContent, {
-    header: true,
-    skipEmptyLines: true,
-  });
-
-  return result.data.filter((row: AirportInfo) => !!row.CODE_ID);
+  return parseRows<AirportInfo>(csvContent).filter(
+    (row) => row.CODE_ID.trim().length > 0
+  );
 }
 
 export function groupChartsByAirport(charts: ChartData[]): GroupedCharts {
@@ -87,11 +89,9 @@ export function groupChartsByAirport(charts: ChartData[]): GroupedCharts {
 
   charts.forEach((chart) => {
     const airport = chart.AirportIcao;
-    let category = CHART_TYPE_MAPPING[chart.ChartTypeEx_CH] as ChartCategory;
+    let category = getChartCategory(chart.ChartTypeEx_CH);
 
-    // Override category for specific chart names
-    // Move "航路点坐标" and "数据库编码" to OTHER category
-    if (chart.ChartName === "航路点坐标" || chart.ChartName === "数据库编码") {
+    if (FORCE_OTHER_CHART_NAMES.has(chart.ChartName)) {
       category = "OTHER";
     }
 
@@ -111,7 +111,6 @@ export function groupChartsByAirport(charts: ChartData[]): GroupedCharts {
     grouped[airport][category]!.push(chart);
   });
 
-  // Log unmapped types for debugging
   if (unmappedTypes.size > 0) {
     console.warn("Unmapped chart types:", Array.from(unmappedTypes));
   }
@@ -124,19 +123,13 @@ export function getAirportList(groupedCharts: GroupedCharts): string[] {
 }
 
 export function getPDFFileName(chart: ChartData): string {
-  // For 机场细则, use ChartName.pdf (not AirportName as it contains slashes)
-  if (chart.ChartTypeEx_CH === "机场细则") {
-    // Replace slashes with underscores and trim whitespace to create valid filename
+  if (chart.ChartTypeEx_CH === AIRPORT_DETAIL_TYPE) {
     const safeName = chart.ChartName.replace(/\//g, "_").trim();
     return `${safeName}.pdf`;
   }
 
-  // For other types, use AirportIcao-PAGE_NUMBER.pdf
-  // Replace slashes with empty string to match actual file names
   const pageNumber = chart.PAGE_NUMBER.replace(/\//g, "");
-
-  // Add (SUP) suffix if IS_SUP is 'Y'
-  const supSuffix = chart.IS_SUP === "Y" ? "(SUP)" : "";
+  const supSuffix = chart.IS_SUP === SUPPLEMENT_FLAG ? "(SUP)" : "";
 
   return `${chart.AirportIcao}-${pageNumber}${supSuffix}.pdf`;
 }

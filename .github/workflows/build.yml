@@ -84,6 +84,9 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -92,10 +95,14 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -R artifacts
 
+      - name: Generate updater manifest
+        run: node scripts/generate-tauri-updater-manifest.js artifacts artifacts/latest.json
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
+            artifacts/latest.json
             artifacts/**/*.dmg
             artifacts/**/*.app.tar.gz
             artifacts/**/*.AppImage
@@ -104,7 +111,6 @@ jobs:
             artifacts/**/*.msi
             artifacts/**/*setup.exe
             artifacts/**/*.sig
-            artifacts/**/latest*.json
           draft: false
           prerelease: false
           generate_release_notes: true

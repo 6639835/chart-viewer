@@ -17,7 +17,18 @@ export function useAutoHideScrollbar<T extends HTMLElement>(
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!enabled) return;
+    const clearHideTimeout = () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+
+    if (!enabled) {
+      clearHideTimeout();
+      setIsScrolling(false);
+      return;
+    }
 
     const element = elementRef.current;
     if (!element) return;
@@ -25,22 +36,22 @@ export function useAutoHideScrollbar<T extends HTMLElement>(
     const onScroll = () => {
       setIsScrolling(true);
 
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      clearHideTimeout();
 
-      timeoutRef.current = setTimeout(() => {
-        setIsScrolling(false);
-      }, timeoutMs);
+      timeoutRef.current = setTimeout(
+        () => {
+          setIsScrolling(false);
+          timeoutRef.current = null;
+        },
+        Math.max(timeoutMs, 0)
+      );
     };
 
     element.addEventListener("scroll", onScroll, { passive: true });
 
     return () => {
       element.removeEventListener("scroll", onScroll);
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      clearHideTimeout();
     };
   }, [elementRef, enabled, timeoutMs]);
 
