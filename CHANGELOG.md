@@ -21,6 +21,16 @@
 
 ---
 
+## [3.1.1] - 2026-04-24
+
+### 修复
+
+- **修复 Tauri updater 下载链接文件名不匹配问题**：
+  - 生成 `latest.json` 时将 GitHub Release 资产 URL 中的空格转换为点号，匹配 GitHub 实际发布的文件名
+  - 修复 Linux `.deb` 等安装包在自动更新时因 `Chart%20Viewer...` 与 `Chart.Viewer...` 文件名不一致导致的下载失败
+
+---
+
 ## [3.1.0] - 2026-04-24
 
 ### 新增
@@ -1244,7 +1254,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v3.1.0...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v3.1.1...HEAD
+[3.1.1]: https://github.com/6639835/chart-viewer/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/6639835/chart-viewer/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/6639835/chart-viewer/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/6639835/chart-viewer/compare/v2.0.0...v3.0.0

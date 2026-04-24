@@ -100,8 +100,12 @@ function classify(file, files) {
   return null;
 }
 
+function githubReleaseAssetName(file) {
+  return path.basename(file).replace(/\s/g, ".");
+}
+
 function downloadUrlFor(file) {
-  return `${downloadBase}/${encodeURIComponent(path.basename(file))}`;
+  return `${downloadBase}/${encodeURIComponent(githubReleaseAssetName(file))}`;
 }
 
 async function main() {
