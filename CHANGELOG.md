@@ -21,6 +21,17 @@
 
 ---
 
+## [3.2.0] - 2026-04-24
+
+### 修复
+
+- **修复 Windows 上 PDF 图表无法加载的问题**：
+  - PDF 自定义协议 URL 改为通过 Tauri `convertFileSrc(..., "chart-pdf")` 生成，Windows 下使用 `http://chart-pdf.localhost/...`
+  - 修复 Windows WebView `fetch()` 不支持直接加载 `chart-pdf://localhost/...` 导致的 `TypeError: Failed to fetch`
+  - 保留非 Tauri 浏览器测试场景下的 `chart-pdf://localhost/...` 回退 URL
+
+---
+
 ## [3.1.1] - 2026-04-24
 
 ### 修复
@@ -1254,7 +1265,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v3.1.1...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/6639835/chart-viewer/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/6639835/chart-viewer/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/6639835/chart-viewer/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/6639835/chart-viewer/compare/v3.0.0...v3.0.1

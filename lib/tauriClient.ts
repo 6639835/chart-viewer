@@ -1,7 +1,7 @@
 "use client";
 
 import { getName, getVersion } from "@tauri-apps/api/app";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
@@ -57,6 +57,8 @@ const updateState: UpdateState = {
   downloadTotal: 0,
 };
 
+const CHART_PDF_PROTOCOL = "chart-pdf";
+
 function parseChartSource(source: ChartSource) {
   if (source.format === "old") {
     return parseCSV(source.content);
@@ -100,7 +102,15 @@ export async function loadGroupedCharts(): Promise<GroupedCharts> {
 }
 
 export function getPdfUrl(filename: string): string {
-  return `chart-pdf://localhost/${encodeURIComponent(filename)}`;
+  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    try {
+      return convertFileSrc(filename, CHART_PDF_PROTOCOL);
+    } catch {
+      // Fall back to the macOS/Linux protocol shape for non-Tauri browser tests.
+    }
+  }
+
+  return `${CHART_PDF_PROTOCOL}://localhost/${encodeURIComponent(filename)}`;
 }
 
 export async function selectDirectory(options: {
