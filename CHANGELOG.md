@@ -21,6 +21,17 @@
 
 ---
 
+## [3.2.1] - 2026-04-25
+
+### 修复
+
+- **修复按机场子目录存放的 `Charts.csv` 部分图表无法打开的问题**：
+  - 兼容每机场 CSV 中 `TRUE` / `FALSE` 大写布尔值，正确识别补充资料图表
+  - 解析每机场 CSV 时清理图表名称、页码和图表类型字段的首尾空格
+  - 生成 PDF 文件名时清理页码首尾空格，避免补充资料等图表因文件名不匹配加载失败
+
+---
+
 ## [3.2.0] - 2026-04-24
 
 ### 修复
@@ -1265,7 +1276,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v3.2.0...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v3.2.1...HEAD
+[3.2.1]: https://github.com/6639835/chart-viewer/compare/v3.2.0...v3.2.1
 [3.2.0]: https://github.com/6639835/chart-viewer/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/6639835/chart-viewer/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/6639835/chart-viewer/compare/v3.0.1...v3.1.0
