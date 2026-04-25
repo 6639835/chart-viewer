@@ -21,6 +21,16 @@
 
 ---
 
+## [3.2.2] - 2026-04-25
+
+### 修复
+
+- **修复将 CSV 目录直接配置为单个机场目录时无法读取图表的问题**：
+  - 支持直接读取机场目录中的 `Charts.csv`（如 `ZBAA/Charts.csv`），不再只支持其父目录
+  - 保留原有按父目录扫描机场子目录的格式 2 加载方式
+
+---
+
 ## [3.2.1] - 2026-04-25
 
 ### 修复
@@ -1276,7 +1286,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v3.2.1...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v3.2.2...HEAD
+[3.2.2]: https://github.com/6639835/chart-viewer/compare/v3.2.1...v3.2.2
 [3.2.1]: https://github.com/6639835/chart-viewer/compare/v3.2.0...v3.2.1
 [3.2.0]: https://github.com/6639835/chart-viewer/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/6639835/chart-viewer/compare/v3.1.0...v3.1.1

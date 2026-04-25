@@ -145,6 +145,17 @@ fn decode_gbk(bytes: &[u8]) -> String {
     content.into_owned()
 }
 
+fn airport_icao_from_dir_name(path: &Path) -> Option<String> {
+    let dir_name = path.file_name()?.to_string_lossy();
+    let trimmed = dir_name.trim();
+
+    if trimmed.len() == 4 && trimmed.chars().all(|ch| ch.is_ascii_alphabetic()) {
+        Some(trimmed.to_uppercase())
+    } else {
+        None
+    }
+}
+
 fn detect_format(csv_dir: &Path) -> &'static str {
     let charts_csv = csv_dir.join("Charts.csv");
     let Ok(buffer) = fs::read(charts_csv) else {
@@ -182,6 +193,16 @@ fn load_old_format(csv_dir: &Path) -> Result<Vec<ChartSource>, String> {
 fn load_new_format(csv_dir: &Path) -> Result<Vec<ChartSource>, String> {
     let entries = fs::read_dir(csv_dir).map_err(|error| error.to_string())?;
     let mut sources = Vec::new();
+
+    if let Some(airport_icao) = airport_icao_from_dir_name(csv_dir) {
+        if let Ok(buffer) = fs::read(csv_dir.join("Charts.csv")) {
+            sources.push(ChartSource {
+                format: "new".to_string(),
+                airport_icao: Some(airport_icao),
+                content: decode_gbk(&buffer),
+            });
+        }
+    }
 
     for entry in entries.flatten() {
         let Ok(file_type) = entry.file_type() else {
