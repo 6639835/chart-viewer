@@ -1,6 +1,6 @@
 [package]
 name = "chart-viewer"
-version = "3.4.0"
+version = "3.4.1"
 description = "Aviation chart viewer application for viewing PDF approach charts"
 authors = ["Justin <epa6643@gmail.com>"]
 edition = "2021"
