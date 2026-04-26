@@ -5,6 +5,7 @@ import nextDynamic from "next/dynamic";
 import Sidebar from "@/components/Sidebar";
 import ChartList from "@/components/ChartList";
 import SettingsModal from "@/components/SettingsModal";
+import { useI18n } from "@/components/I18nProvider";
 import { getPDFFileName } from "@/lib/chartParser";
 import { getPdfUrl, loadGroupedCharts, openExternal } from "@/lib/tauriClient";
 import {
@@ -15,14 +16,20 @@ import {
 } from "@/types/chart";
 import { Loader2 } from "lucide-react";
 
+function PDFViewerLoading() {
+  const { t } = useI18n();
+
+  return (
+    <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900">
+      <div className="text-gray-400">{t("home.loadingPdfViewer")}</div>
+    </div>
+  );
+}
+
 // Dynamic import PDFViewer with SSR disabled (PDF.js requires browser APIs)
 const PDFViewer = nextDynamic(() => import("@/components/PDFViewer"), {
   ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900">
-      <div className="text-gray-400">Loading PDF viewer...</div>
-    </div>
-  ),
+  loading: () => <PDFViewerLoading />,
 });
 
 function findAirportDiagramChart(charts: ChartData[]): ChartData | null {
@@ -45,6 +52,7 @@ function findAirportDiagramChart(charts: ChartData[]): ChartData | null {
 }
 
 export default function Home() {
+  const { t } = useI18n();
   const [groupedCharts, setGroupedCharts] = useState<GroupedCharts>({});
   const [airports, setAirports] = useState<string[]>([]);
   const [selectedAirport, setSelectedAirport] = useState<string>("");
@@ -266,7 +274,7 @@ export default function Home() {
         <div className="text-center">
           <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
           <p className="text-gray-900 dark:text-white text-lg">
-            Loading Chart Data...
+            {t("home.loadingChartData")}
           </p>
         </div>
       </div>
@@ -353,13 +361,11 @@ export default function Home() {
           ) : (
             <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-500">
               <div className="text-center px-4">
-                <p className="text-lg">No chart selected</p>
+                <p className="text-lg">{t("home.noChartSelected")}</p>
                 <p className="text-sm mt-2">
-                  <span className="lg:hidden">
-                    Tap the menu to select a category and chart
-                  </span>
+                  <span className="lg:hidden">{t("home.tapMenuToSelect")}</span>
                   <span className="hidden lg:inline">
-                    Select a category and chart to view
+                    {t("home.selectCategoryAndChart")}
                   </span>
                 </p>
                 {/* Mobile menu button */}
@@ -367,12 +373,12 @@ export default function Home() {
                   onClick={() => setIsSidebarOpen(true)}
                   className="lg:hidden mt-4 px-6 py-3 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors"
                 >
-                  Open Menu
+                  {t("home.openMenu")}
                 </button>
 
                 {/* Copyright Footer */}
                 <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-600">
-                  <p>Chart Viewer - EFB © 2025 Justin</p>
+                  <p>{t("app.title")} © 2025 Justin</p>
                   <button
                     onClick={() => {
                       const url = "https://github.com/6639835/chart-viewer";
@@ -382,7 +388,7 @@ export default function Home() {
                     }}
                     className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 inline-block mt-1 cursor-pointer"
                   >
-                    GitHub Repository
+                    {t("common.githubRepository")}
                   </button>
                 </div>
               </div>

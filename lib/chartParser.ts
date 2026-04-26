@@ -42,7 +42,8 @@ function toYesNo(value: unknown): "Y" | "N" {
 
 export function parseCSV(csvContent: string): ChartData[] {
   return parseRows<ChartData>(csvContent).filter(
-    (row) => fieldValue(row.AirportIcao).length > 0 && hasChartFileReference(row)
+    (row) =>
+      fieldValue(row.AirportIcao).length > 0 && hasChartFileReference(row)
   );
 }
 

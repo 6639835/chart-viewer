@@ -29,11 +29,7 @@
     "active": true,
     "targets": "all",
     "category": "Utility",
-    "icon": [
-      "../public/icon.png",
-      "../public/icon.ico",
-      "../public/icon.icns"
-    ],
+    "icon": ["../public/icon.png", "../public/icon.ico", "../public/icon.icns"],
     "macOS": {
       "hardenedRuntime": false,
       "signingIdentity": null

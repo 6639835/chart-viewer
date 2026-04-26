@@ -38,7 +38,9 @@ function normalizeArch(value) {
 }
 
 function archFromText(text) {
-  return text.match(/(?:^|[_\-.])(aarch64|x86_64|amd64|x64|i686)(?:[_\-.]|$)/i)?.[1];
+  return text.match(
+    /(?:^|[_\-.])(aarch64|x86_64|amd64|x64|i686)(?:[_\-.]|$)/i
+  )?.[1];
 }
 
 function artifactGroup(file) {

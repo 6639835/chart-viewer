@@ -26,6 +26,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useI18n } from "@/components/I18nProvider";
 import { getFormattedChartName } from "@/lib/chartFormatter";
 import { useAutoHideScrollbar } from "@/lib/hooks/useAutoHideScrollbar";
 import { ChartData } from "@/types/chart";
@@ -65,6 +66,8 @@ const MAX_DEVICE_PIXEL_RATIO = 2;
 const MAX_CANVAS_PIXELS = 18_000_000;
 const PDF_HEADER = "%PDF";
 const PAGE_CACHE_RADIUS = 1;
+const LINE_WHEEL_SCROLL_PIXELS = 40;
+const PAGE_WHEEL_SCROLL_PIXELS = 320;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -79,6 +82,24 @@ function shouldWheelZoom(event: WheelEvent, isWindows: boolean) {
 
   // Heuristic: mouse wheels often use line/page deltas, trackpads use pixel deltas.
   return event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL;
+}
+
+function getWheelPanDelta(event: WheelEvent) {
+  const multiplier =
+    event.deltaMode === WheelEvent.DOM_DELTA_LINE
+      ? LINE_WHEEL_SCROLL_PIXELS
+      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+        ? PAGE_WHEEL_SCROLL_PIXELS
+        : 1;
+
+  const deltaX = event.deltaX * multiplier;
+  const deltaY = event.deltaY * multiplier;
+
+  if (event.shiftKey && deltaX === 0) {
+    return { left: deltaY, top: 0 };
+  }
+
+  return { left: deltaX, top: deltaY };
 }
 
 function getCanvasPixelRatio(
@@ -144,6 +165,7 @@ export default function PDFViewer({
   bookmarkedCharts,
   onNavigateToBookmark,
 }: PDFViewerProps) {
+  const { t, tChartType } = useI18n();
   const [pdfDocument, setPdfDocument] = useState<PDFDocumentProxy | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [pageNumber, setPageNumber] = useState(1);
@@ -158,7 +180,9 @@ export default function PDFViewer({
   const [autoFit, setAutoFit] = useState(true);
   const [documentLoading, setDocumentLoading] = useState(true);
   const [pageRendering, setPageRendering] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<
+    "pdf.failedToLoad" | "pdf.failedToRender" | null
+  >(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -197,6 +221,11 @@ export default function PDFViewer({
   const displayHeight = pageSize ? pageSize.height * visibleScale : 0;
   const manualPageOuterWidth = displayWidth + MANUAL_PAGE_PADDING * 2;
   const manualPageOuterHeight = displayHeight + MANUAL_PAGE_PADDING * 2;
+  const manualStageWidth = Math.max(manualPageOuterWidth, containerSize.width);
+  const manualStageHeight = Math.max(
+    manualPageOuterHeight,
+    containerSize.height
+  );
   const centerManualPageHorizontally =
     !autoFit && displayWidth > 0 && manualPageOuterWidth < containerSize.width;
   const centerManualPageVertically =
@@ -434,7 +463,7 @@ export default function PDFViewer({
     setRenderScale(1);
     setDocumentLoading(true);
     setPageRendering(false);
-    setError(null);
+    setErrorKey(null);
     cancelRender();
     clearPageCache();
 
@@ -492,7 +521,7 @@ export default function PDFViewer({
           pageNumber: chart.PAGE_NUMBER,
           pdfUrl,
         });
-        setError("Failed to load PDF. File may not exist.");
+        setErrorKey("pdf.failedToLoad");
         setDocumentLoading(false);
       });
 
@@ -597,7 +626,7 @@ export default function PDFViewer({
       }
 
       console.error("PDF render error:", renderError);
-      setError("Failed to render PDF page.");
+      setErrorKey("pdf.failedToRender");
       setPageRendering(false);
     });
 
@@ -692,8 +721,13 @@ export default function PDFViewer({
         return;
       }
 
-      if (autoFit) {
-        event.preventDefault();
+      if (!autoFit) {
+        const { left, top } = getWheelPanDelta(event);
+
+        if (left !== 0 || top !== 0) {
+          event.preventDefault();
+          container.scrollBy({ left, top });
+        }
       }
     };
 
@@ -753,12 +787,12 @@ export default function PDFViewer({
     });
   };
 
-  if (error) {
+  if (errorKey) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-200 dark:bg-gray-900">
         <div className="text-center text-gray-400 dark:text-gray-400">
           <FileText className="w-16 h-16 mx-auto mb-4 opacity-50" />
-          <p className="text-lg">{error}</p>
+          <p className="text-lg">{t(errorKey)}</p>
           <p className="text-sm mt-2">{getFormattedChartName(chart)}</p>
           <p className="text-xs mt-1 opacity-70">{chart.PAGE_NUMBER}</p>
         </div>
@@ -774,7 +808,7 @@ export default function PDFViewer({
             <button
               onClick={onOpenSidebar}
               className="lg:hidden p-2 text-gray-700 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 rounded flex-shrink-0"
-              aria-label="Open menu"
+              aria-label={t("pdf.openMenu")}
             >
               <Menu className="w-5 h-5" />
             </button>
@@ -796,21 +830,23 @@ export default function PDFViewer({
               onClick={zoomOut}
               disabled={targetScale <= MIN_ZOOM || autoFit}
               className="p-1 sm:p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Zoom Out"
+              title={t("pdf.zoomOut")}
             >
               <ZoomOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
             <span
               className="text-gray-900 dark:text-white text-[10px] sm:text-xs w-8 sm:w-12 text-center"
-              title="Current zoom level"
+              title={t("pdf.currentZoomLevel")}
             >
-              {autoFit ? "Auto" : `${Math.round(targetScale * 100)}%`}
+              {autoFit
+                ? t("pdf.autoZoom")
+                : `${Math.round(targetScale * 100)}%`}
             </span>
             <button
               onClick={zoomIn}
               disabled={targetScale >= MAX_ZOOM || autoFit}
               className="p-1 sm:p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Zoom In"
+              title={t("pdf.zoomIn")}
             >
               <ZoomIn className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
@@ -823,7 +859,7 @@ export default function PDFViewer({
                 ? "bg-blue-500 text-white"
                 : "text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
             }`}
-            title="Fit to Window"
+            title={t("pdf.fitToWindow")}
           >
             <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
@@ -840,7 +876,7 @@ export default function PDFViewer({
                   <button
                     onClick={() => onNavigateToBookmark("prev")}
                     className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
-                    title="Previous Bookmark"
+                    title={t("pdf.previousBookmark")}
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
@@ -853,7 +889,7 @@ export default function PDFViewer({
                   <button
                     onClick={() => onNavigateToBookmark("next")}
                     className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
-                    title="Next Bookmark"
+                    title={t("pdf.nextBookmark")}
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
@@ -878,6 +914,8 @@ export default function PDFViewer({
         <div
           className={autoFit ? "relative" : "pdf-page-stage"}
           style={{
+            width: autoFit ? undefined : `${manualStageWidth}px`,
+            height: autoFit ? undefined : `${manualStageHeight}px`,
             minWidth: autoFit ? undefined : "100%",
             minHeight: autoFit ? undefined : "100%",
             display: autoFit ? undefined : "flex",
@@ -896,7 +934,7 @@ export default function PDFViewer({
           }}
         >
           <div
-            className="relative"
+            className="relative flex-shrink-0"
             style={{
               width: displayWidth ? `${displayWidth}px` : undefined,
               height: displayHeight ? `${displayHeight}px` : undefined,
@@ -904,7 +942,7 @@ export default function PDFViewer({
           >
             {loading && (
               <div className="absolute inset-0 z-10 flex items-center justify-center text-gray-900 dark:text-white text-sm pointer-events-none">
-                {documentLoading ? "Loading PDF..." : "Rendering PDF..."}
+                {documentLoading ? t("pdf.loadingPdf") : t("pdf.renderingPdf")}
               </div>
             )}
             <canvas
@@ -929,13 +967,13 @@ export default function PDFViewer({
           disabled={pageNumber <= 1}
           className="px-2 sm:px-4 py-1.5 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          <span className="hidden sm:inline">&lt; PREV</span>
+          <span className="hidden sm:inline">&lt; {t("pdf.prev")}</span>
           <span className="sm:hidden">&lt;</span>
         </button>
 
         <div className="text-center flex-1 px-2">
           <div className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white truncate">
-            {chart.ChartTypeEx_CH || "TAXI"}
+            {chart.ChartTypeEx_CH ? tChartType(chart.ChartTypeEx_CH) : "TAXI"}
           </div>
           {!documentLoading && (
             <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -949,7 +987,7 @@ export default function PDFViewer({
           disabled={pageNumber >= numPages}
           className="px-2 sm:px-4 py-1.5 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          <span className="hidden sm:inline">NEXT &gt;</span>
+          <span className="hidden sm:inline">{t("pdf.next")} &gt;</span>
           <span className="sm:hidden">&gt;</span>
         </button>
       </div>

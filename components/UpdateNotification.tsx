@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertCircle, Download, RefreshCw, Rocket, X } from "lucide-react";
+import { useI18n } from "@/components/I18nProvider";
 import {
   checkForUpdate,
   downloadUpdate,
@@ -20,6 +21,7 @@ type Phase =
   | "error";
 
 export default function UpdateNotification() {
+  const { t } = useI18n();
   const [phase, setPhase] = useState<Phase>("idle");
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
@@ -116,19 +118,19 @@ export default function UpdateNotification() {
             )}
             <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
               {phase === "error"
-                ? "Update Check Failed"
+                ? t("update.checkFailed")
                 : phase === "downloading"
-                  ? "Downloading Update…"
+                  ? t("update.downloading")
                   : phase === "downloaded"
-                    ? "Update Ready to Install"
-                    : "New Update Available"}
+                    ? t("update.downloaded")
+                    : t("update.available")}
             </h3>
           </div>
           {canDismiss && (
             <button
               onClick={handleDismiss}
               className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors ml-2"
-              aria-label="Close"
+              aria-label={t("update.close")}
             >
               <X className="w-4 h-4" />
             </button>
@@ -145,7 +147,7 @@ export default function UpdateNotification() {
                 onClick={handleOpenGitHub}
                 className="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
               >
-                Check on GitHub
+                {t("update.checkOnGitHub")}
               </button>
             </>
           )}
@@ -153,11 +155,9 @@ export default function UpdateNotification() {
           {phase === "available" && (
             <>
               <p className="text-sm text-gray-600 dark:text-gray-300">
-                Version{" "}
-                <span className="font-semibold text-gray-900 dark:text-white">
-                  {updateInfo?.version}
-                </span>{" "}
-                is available.
+                {t("update.versionAvailable", {
+                  version: updateInfo?.version ?? "",
+                })}
                 {updateInfo?.releaseNotes && (
                   <span className="block mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
                     {updateInfo.releaseNotes}
@@ -169,7 +169,7 @@ export default function UpdateNotification() {
                 className="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
               >
                 <Download className="w-4 h-4" />
-                Download Update
+                {t("update.download")}
               </button>
             </>
           )}
@@ -193,7 +193,7 @@ export default function UpdateNotification() {
                 </div>
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Please wait while the update is downloaded…
+                {t("update.waitDownloading")}
               </p>
             </>
           )}
@@ -201,18 +201,16 @@ export default function UpdateNotification() {
           {phase === "downloaded" && (
             <>
               <p className="text-sm text-gray-600 dark:text-gray-300">
-                Version{" "}
-                <span className="font-semibold text-gray-900 dark:text-white">
-                  {updateInfo?.version}
-                </span>{" "}
-                has been downloaded. Restart to apply.
+                {t("update.versionDownloaded", {
+                  version: updateInfo?.version ?? "",
+                })}
               </p>
               <button
                 onClick={handleInstall}
                 className="w-full bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
               >
                 <Rocket className="w-4 h-4" />
-                Restart &amp; Install
+                {t("update.restartInstall")}
               </button>
             </>
           )}

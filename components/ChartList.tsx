@@ -8,6 +8,7 @@ import {
   formatSidStarChartName,
 } from "@/lib/chartFormatter";
 import { useAutoHideScrollbar } from "@/lib/hooks/useAutoHideScrollbar";
+import { useI18n } from "@/components/I18nProvider";
 
 interface ChartListProps {
   charts: ChartData[];
@@ -133,6 +134,7 @@ export default function ChartList({
   bookmarkedCharts,
   onToggleBookmark,
 }: ChartListProps) {
+  const { t, tChartType } = useI18n();
   // State for runway filter
   const [selectedRunwayFilter, setSelectedRunwayFilter] = useState<
     string | null
@@ -204,8 +206,10 @@ export default function ChartList({
       <div className="flex items-center justify-center h-full bg-white dark:bg-gray-900 text-gray-400 dark:text-gray-500">
         <div className="text-center">
           <FileText className="w-16 h-16 mx-auto mb-4 opacity-50" />
-          <p className="text-lg">No charts available</p>
-          <p className="text-sm mt-2">Select a category with charts</p>
+          <p className="text-lg">{t("chartList.noChartsAvailable")}</p>
+          <p className="text-sm mt-2">
+            {t("chartList.selectCategoryWithCharts")}
+          </p>
         </div>
       </div>
     );
@@ -220,7 +224,7 @@ export default function ChartList({
       >
         <div className="p-4 sm:p-6">
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-800">
-            Charts ({sortedCharts.length})
+            {t("chartList.chartsHeading", { count: sortedCharts.length })}
           </h2>
           <div className="space-y-2">
             {sortedCharts.map((chart) => {
@@ -274,7 +278,7 @@ export default function ChartList({
                                 : "text-gray-500 dark:text-gray-500"
                             }`}
                           >
-                            {chart.ChartTypeEx_CH}
+                            {tChartType(chart.ChartTypeEx_CH)}
                           </p>
                         )}
                       </div>
@@ -287,7 +291,11 @@ export default function ChartList({
                       onToggleBookmark(chart, category!);
                     }}
                     className="absolute top-2 right-2 p-2 rounded-full hover:bg-white/20 dark:hover:bg-black/20 transition-colors z-10"
-                    title={isBookmarked ? "Remove bookmark" : "Add bookmark"}
+                    title={
+                      isBookmarked
+                        ? t("chartList.removeBookmark")
+                        : t("chartList.addBookmark")
+                    }
                   >
                     {isBookmarked ? (
                       <CheckCircle2
@@ -324,7 +332,7 @@ export default function ChartList({
     >
       <div className="p-4 sm:p-6">
         <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-800">
-          Charts ({sortedCharts.length})
+          {t("chartList.chartsHeading", { count: sortedCharts.length })}
         </h2>
 
         {/* Runway Filter */}
@@ -339,7 +347,7 @@ export default function ChartList({
                     : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700"
                 }`}
               >
-                全部
+                {t("chartList.all")}
               </button>
               {sortedRunways.map((runway) => (
                 <button
@@ -351,7 +359,9 @@ export default function ChartList({
                       : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700"
                   }`}
                 >
-                  {runway === "其他" ? "其他" : `RWY ${runway}`}
+                  {runway === "其他"
+                    ? t("chartList.otherCharts")
+                    : `RWY ${runway}`}
                 </button>
               ))}
             </div>
@@ -367,11 +377,15 @@ export default function ChartList({
                 {/* Runway Header */}
                 <div className="flex items-center justify-between px-3 py-2 bg-gray-200 dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-700">
                   <h3 className="font-bold text-sm sm:text-base text-gray-900 dark:text-white">
-                    {runway === "其他" ? "其他图表" : `RWY ${runway}`}
+                    {runway === "其他"
+                      ? t("chartList.otherCharts")
+                      : `RWY ${runway}`}
                   </h3>
                   <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded font-medium flex-shrink-0 ml-2">
                     {runwayCharts.length}{" "}
-                    {runwayCharts.length === 1 ? "chart" : "charts"}
+                    {runwayCharts.length === 1
+                      ? t("chartList.chart")
+                      : t("chartList.charts")}
                   </span>
                 </div>
 
@@ -428,7 +442,7 @@ export default function ChartList({
                                       : "text-gray-500 dark:text-gray-500"
                                   }`}
                                 >
-                                  {chart.ChartTypeEx_CH}
+                                  {tChartType(chart.ChartTypeEx_CH)}
                                 </p>
                               )}
                             </div>
@@ -442,7 +456,9 @@ export default function ChartList({
                           }}
                           className="absolute top-2 right-2 p-2 rounded-full hover:bg-white/20 dark:hover:bg-black/20 transition-colors z-10"
                           title={
-                            isBookmarked ? "Remove bookmark" : "Add bookmark"
+                            isBookmarked
+                              ? t("chartList.removeBookmark")
+                              : t("chartList.addBookmark")
                           }
                         >
                           {isBookmarked ? (

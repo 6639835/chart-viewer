@@ -5,6 +5,7 @@ import { ChevronDown, Search, X, Settings } from "lucide-react";
 import { ChartCategory, CATEGORY_ORDER } from "@/types/chart";
 import ThemeToggle from "./ThemeToggle";
 import { useAutoHideScrollbar } from "@/lib/hooks/useAutoHideScrollbar";
+import { useI18n } from "@/components/I18nProvider";
 
 interface SidebarProps {
   airports: string[];
@@ -18,16 +19,6 @@ interface SidebarProps {
   onCloseCategory?: () => void;
 }
 
-// Category display names mapping
-const CATEGORY_NAMES: Record<ChartCategory, string> = {
-  STAR: "STAR",
-  APP: "APP",
-  TAXI: "TAXI",
-  SID: "SID",
-  OTHER: "OTHER",
-  细则: "细则",
-};
-
 export default function Sidebar({
   airports,
   selectedAirport,
@@ -39,6 +30,7 @@ export default function Sidebar({
   onOpenSettings,
   onCloseCategory,
 }: SidebarProps) {
+  const { t, tc } = useI18n();
   const [isAirportDropdownOpen, setIsAirportDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const airportListRef = useRef<HTMLDivElement>(null);
@@ -117,7 +109,7 @@ export default function Sidebar({
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search airport..."
+                      placeholder={t("sidebar.searchAirport")}
                       className="w-full bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white pl-10 pr-4 py-2 rounded border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:outline-none"
                       autoFocus
                     />
@@ -145,7 +137,7 @@ export default function Sidebar({
                     ))
                   ) : (
                     <div className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
-                      No airports found
+                      {t("sidebar.noAirportsFound")}
                     </div>
                   )}
                 </div>
@@ -164,14 +156,14 @@ export default function Sidebar({
           {CATEGORY_ORDER.map((category) => {
             const count = categoryCounts[category] || 0;
             const isDisabled = count === 0;
-            const displayName = CATEGORY_NAMES[category];
+            const displayName = tc(category);
 
             return (
               <button
                 key={category}
                 onClick={() => !isDisabled && handleCategorySelect(category)}
                 disabled={isDisabled}
-                title={`${category} (${count})`}
+                title={`${displayName} (${count})`}
                 className={`w-full py-3 rounded text-center font-bold transition-colors text-xs ${
                   selectedCategory === category
                     ? "bg-blue-500 text-white shadow-lg"
@@ -200,8 +192,8 @@ export default function Sidebar({
           <button
             onClick={onOpenSettings}
             className="w-full p-2 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded flex items-center justify-center transition-colors"
-            aria-label="Settings"
-            title="Settings"
+            aria-label={t("sidebar.settings")}
+            title={t("sidebar.settings")}
           >
             <Settings className="w-5 h-5" />
           </button>
@@ -212,7 +204,7 @@ export default function Sidebar({
           <button
             onClick={onClose}
             className="w-full p-2 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded flex items-center justify-center"
-            aria-label="Close sidebar"
+            aria-label={t("sidebar.closeSidebar")}
           >
             <X className="w-5 h-5" />
           </button>

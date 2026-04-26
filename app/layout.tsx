@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { I18nProvider } from "@/components/I18nProvider";
 import UpdateNotification from "@/components/UpdateNotification";
 
 export const metadata: Metadata = {
@@ -14,11 +15,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en-US" suppressHydrationWarning>
       <body>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
-          <UpdateNotification />
+          <I18nProvider>
+            {children}
+            <UpdateNotification />
+          </I18nProvider>
         </ThemeProvider>
       </body>
     </html>

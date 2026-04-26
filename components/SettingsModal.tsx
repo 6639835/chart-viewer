@@ -1,7 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { AlertCircle, Check, FolderOpen, Loader2, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  AlertCircle,
+  Check,
+  ChevronDown,
+  FolderOpen,
+  Languages,
+  Loader2,
+  X,
+} from "lucide-react";
+import { useI18n } from "@/components/I18nProvider";
+import type { Locale } from "@/lib/i18n";
 import type { AppConfig } from "@/types/config";
 import {
   getAppInfo,
@@ -24,6 +34,7 @@ export default function SettingsModal({
   onClose,
   onSave,
 }: SettingsModalProps) {
+  const { locale, localeLabels, locales, setLocale, t } = useI18n();
   const [config, setConfig] = useState<AppConfig>({
     chartsDirectory: "",
     csvDirectory: "",
@@ -33,24 +44,18 @@ export default function SettingsModal({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [version, setVersion] = useState<string>("");
+  const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false);
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    loadConfig();
-    loadVersion();
-  }, [isOpen]);
-
-  const loadVersion = async () => {
+  const loadVersion = useCallback(async () => {
     try {
       const appInfo = await getAppInfo();
       setVersion(appInfo.version);
     } catch (err) {
       console.error("Error loading version:", err);
     }
-  };
+  }, []);
 
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     setLoading(true);
     setError(null);
     setSuccess(false);
@@ -58,18 +63,36 @@ export default function SettingsModal({
     try {
       setConfig(await getConfig());
     } catch {
-      setError("Error loading configuration");
+      setError(t("settings.errorLoadingConfig"));
     } finally {
       setLoading(false);
     }
+  }, [t]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    loadConfig();
+    loadVersion();
+  }, [isOpen, loadConfig, loadVersion]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsLanguageDropdownOpen(false);
+    }
+  }, [isOpen]);
+
+  const handleLanguageSelect = (nextLocale: Locale) => {
+    setLocale(nextLocale);
+    setIsLanguageDropdownOpen(false);
   };
 
   const handleBrowseClick = async (field: ConfigField) => {
     try {
       const title =
         field === "chartsDirectory"
-          ? "Select Charts Directory"
-          : "Select CSV Directory";
+          ? t("settings.selectChartsDirectory")
+          : t("settings.selectCsvDirectory");
       const path = await selectDirectory({
         title,
         defaultPath: config[field] || undefined,
@@ -79,7 +102,7 @@ export default function SettingsModal({
         setConfig((prev) => ({ ...prev, [field]: path }));
       }
     } catch {
-      setError("Error selecting directory");
+      setError(t("settings.errorSelectingDirectory"));
     }
   };
 
@@ -115,12 +138,12 @@ export default function SettingsModal({
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
-            Settings
+            {t("settings.title")}
           </h2>
           <button
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
-            aria-label="Close settings"
+            aria-label={t("settings.closeSettings")}
           >
             <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
           </button>
@@ -135,7 +158,7 @@ export default function SettingsModal({
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Charts Directory
+                  {t("settings.chartsDirectory")}
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -150,22 +173,22 @@ export default function SettingsModal({
                   <button
                     onClick={() => handleBrowseClick("chartsDirectory")}
                     className="px-3 sm:px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-2 flex-shrink-0"
-                    title="Browse"
+                    title={t("settings.browse")}
                   >
                     <FolderOpen className="w-5 h-5 text-gray-600 dark:text-gray-300 flex-shrink-0" />
                     <span className="hidden sm:inline text-sm font-medium text-gray-700 dark:text-gray-200">
-                      Browse
+                      {t("settings.browse")}
                     </span>
                   </button>
                 </div>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Path to the directory containing PDF chart files
+                  {t("settings.chartsDirectoryHelp")}
                 </p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  CSV Directory
+                  {t("settings.csvDirectory")}
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -180,33 +203,106 @@ export default function SettingsModal({
                   <button
                     onClick={() => handleBrowseClick("csvDirectory")}
                     className="px-3 sm:px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-2 flex-shrink-0"
-                    title="Browse"
+                    title={t("settings.browse")}
                   >
                     <FolderOpen className="w-5 h-5 text-gray-600 dark:text-gray-300 flex-shrink-0" />
                     <span className="hidden sm:inline text-sm font-medium text-gray-700 dark:text-gray-200">
-                      Browse
+                      {t("settings.browse")}
                     </span>
                   </button>
                 </div>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Path to the directory containing Charts.csv file
+                  {t("settings.csvDirectoryHelp")}
                 </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  {t("common.language")}
+                </label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setIsLanguageDropdownOpen(
+                        (isCurrentlyOpen) => !isCurrentlyOpen
+                      )
+                    }
+                    aria-label={t("common.selectLanguage")}
+                    aria-expanded={isLanguageDropdownOpen}
+                    aria-haspopup="listbox"
+                    className="w-full px-3 sm:px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm flex items-center justify-between gap-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-600"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Languages className="w-4 h-4 text-gray-500 dark:text-gray-300 flex-shrink-0" />
+                      <span className="truncate">{localeLabels[locale]}</span>
+                    </span>
+                    <ChevronDown
+                      className={`w-4 h-4 text-gray-500 dark:text-gray-300 flex-shrink-0 transition-transform ${
+                        isLanguageDropdownOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {isLanguageDropdownOpen && (
+                    <>
+                      <button
+                        type="button"
+                        className="fixed inset-0 z-10 cursor-default"
+                        aria-label={t("common.close")}
+                        tabIndex={-1}
+                        onClick={() => setIsLanguageDropdownOpen(false)}
+                      />
+                      <div
+                        role="listbox"
+                        className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-lg border border-gray-300 bg-white shadow-xl dark:border-gray-600 dark:bg-gray-700"
+                      >
+                        {locales.map((availableLocale) => {
+                          const isSelected = availableLocale === locale;
+
+                          return (
+                            <button
+                              key={availableLocale}
+                              type="button"
+                              role="option"
+                              aria-selected={isSelected}
+                              onClick={() =>
+                                handleLanguageSelect(availableLocale)
+                              }
+                              className={`w-full px-3 sm:px-4 py-2.5 text-left text-sm flex items-center justify-between gap-3 transition-colors ${
+                                isSelected
+                                  ? "bg-blue-500 text-white"
+                                  : "text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-600"
+                              }`}
+                            >
+                              <span className="truncate">
+                                {localeLabels[availableLocale]}
+                              </span>
+                              {isSelected && (
+                                <Check className="w-4 h-4 flex-shrink-0" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3 sm:p-4">
                 <div className="flex gap-2 sm:gap-3">
                   <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                   <div className="text-xs sm:text-sm text-blue-900 dark:text-blue-100 min-w-0">
-                    <p className="font-medium mb-1">Path Format:</p>
+                    <p className="font-medium mb-1">
+                      {t("settings.pathFormat")}
+                    </p>
                     <ul className="list-disc list-inside space-y-1 text-blue-800 dark:text-blue-200">
                       <li className="break-words">
-                        Use relative paths such as{" "}
-                        <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded break-all">
-                          charts
-                        </code>
+                        {t("settings.pathFormatRelative", { path: "charts" })}
                       </li>
                       <li className="break-words">
-                        Or use absolute paths selected with the native picker
+                        {t("settings.pathFormatAbsolute")}
                       </li>
                     </ul>
                   </div>
@@ -215,17 +311,19 @@ export default function SettingsModal({
 
               <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                 <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  About
+                  {t("settings.about")}
                 </h3>
                 <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                  <p>Chart Viewer - EFB {version ? `v${version}` : "v1.0.0"}</p>
-                  <p>© 2025 Justin. All rights reserved.</p>
-                  <p>Licensed under MIT License</p>
+                  <p>
+                    {t("app.title")} {version ? `v${version}` : "v1.0.0"}
+                  </p>
+                  <p>{t("settings.copyright")}</p>
+                  <p>{t("settings.license")}</p>
                   <button
                     onClick={handleOpenGitHub}
                     className="text-blue-600 dark:text-blue-400 hover:underline inline-block cursor-pointer"
                   >
-                    GitHub Repository →
+                    {t("common.githubRepository")} →
                   </button>
                 </div>
               </div>
@@ -246,7 +344,7 @@ export default function SettingsModal({
                   <div className="flex gap-3">
                     <Check className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
                     <p className="text-sm text-green-800 dark:text-green-200">
-                      Configuration saved successfully!
+                      {t("settings.configSaved")}
                     </p>
                   </div>
                 </div>
@@ -261,7 +359,7 @@ export default function SettingsModal({
             disabled={saving}
             className="px-4 sm:px-6 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 text-sm sm:text-base"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={handleSave}
@@ -271,15 +369,15 @@ export default function SettingsModal({
             {saving ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Saving...
+                {t("common.saving")}
               </>
             ) : success ? (
               <>
                 <Check className="w-4 h-4" />
-                Saved
+                {t("common.saved")}
               </>
             ) : (
-              "Save Changes"
+              t("common.saveChanges")
             )}
           </button>
         </div>
