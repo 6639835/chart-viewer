@@ -70,6 +70,17 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
+function shouldWheelZoom(event: WheelEvent, isWindows: boolean) {
+  // Trackpad pinch gestures typically surface as ctrl/meta + wheel. Keep supporting that.
+  if (event.ctrlKey || event.metaKey) return true;
+
+  // On Windows, users expect the mouse wheel to zoom the chart.
+  if (isWindows) return true;
+
+  // Heuristic: mouse wheels often use line/page deltas, trackpads use pixel deltas.
+  return event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL;
+}
+
 function getCanvasPixelRatio(
   pageSize: PageSize,
   scale: number,
@@ -613,6 +624,7 @@ export default function PDFViewer({
 
     const handleMouseDown = (event: MouseEvent) => {
       if (autoFit) return;
+      if (event.button !== 0) return;
 
       const target = event.target as HTMLElement;
       if (target.closest("button,a")) return;
@@ -661,9 +673,11 @@ export default function PDFViewer({
   useEffect(() => {
     if (!containerRef.current) return;
     const container = containerRef.current;
+    const isWindows =
+      typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
 
     const handleWheel = (event: WheelEvent) => {
-      if (event.ctrlKey || event.metaKey) {
+      if (shouldWheelZoom(event, isWindows)) {
         event.preventDefault();
         captureZoomAnchor(event.clientX, event.clientY);
         setAutoFit(false);

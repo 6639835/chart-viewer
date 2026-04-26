@@ -19,26 +19,30 @@ function parseRows<T>(csvContent: string): T[] {
   }).data;
 }
 
-function hasChartFileReference(row: {
-  ChartName: string;
-  ChartTypeEx_CH: string;
-  PAGE_NUMBER: string;
-}): boolean {
-  if (row.ChartTypeEx_CH === AIRPORT_DETAIL_TYPE) {
-    return row.ChartName.trim().length > 0;
-  }
-
-  return row.PAGE_NUMBER.trim().length > 0;
+function fieldValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
-function toYesNo(value: string): "Y" | "N" {
-  const normalized = value.trim().toUpperCase();
+function hasChartFileReference(row: {
+  ChartName?: string;
+  ChartTypeEx_CH?: string;
+  PAGE_NUMBER?: string;
+}): boolean {
+  if (fieldValue(row.ChartTypeEx_CH) === AIRPORT_DETAIL_TYPE) {
+    return fieldValue(row.ChartName).length > 0;
+  }
+
+  return fieldValue(row.PAGE_NUMBER).length > 0;
+}
+
+function toYesNo(value: unknown): "Y" | "N" {
+  const normalized = fieldValue(value).toUpperCase();
   return normalized === "TRUE" || normalized === "Y" ? "Y" : "N";
 }
 
 export function parseCSV(csvContent: string): ChartData[] {
   return parseRows<ChartData>(csvContent).filter(
-    (row) => row.AirportIcao.trim().length > 0 && hasChartFileReference(row)
+    (row) => fieldValue(row.AirportIcao).length > 0 && hasChartFileReference(row)
   );
 }
 
@@ -54,8 +58,8 @@ export function parsePerAirportCSV(
   return parseRows<PerAirportChartData>(csvContent)
     .filter(hasChartFileReference)
     .map((row) => {
-      const chartName = row.ChartName.trim();
-      const pageNumber = row.PAGE_NUMBER.trim();
+      const chartName = fieldValue(row.ChartName);
+      const pageNumber = fieldValue(row.PAGE_NUMBER);
       const chartKey = pageNumber || chartName;
 
       return {
@@ -69,7 +73,7 @@ export function parsePerAirportCSV(
         FilePath: "",
         ChartName: chartName,
         FileSize: "",
-        ChartTypeEx_CH: row.ChartTypeEx_CH.trim(),
+        ChartTypeEx_CH: fieldValue(row.ChartTypeEx_CH),
         MD5: "",
         AD_HP_ID: "",
         PAGE_NUMBER: pageNumber,
@@ -82,7 +86,7 @@ export function parsePerAirportCSV(
 
 export function parseAirportsCSV(csvContent: string): AirportInfo[] {
   return parseRows<AirportInfo>(csvContent).filter(
-    (row) => row.CODE_ID.trim().length > 0
+    (row) => fieldValue(row.CODE_ID).length > 0
   );
 }
 
