@@ -108,6 +108,7 @@ const fs = require("fs");
 const version = process.argv[1];
 const tauriConfigPath = "src-tauri/tauri.conf.json";
 const cargoTomlPath = "src-tauri/Cargo.toml";
+const cargoLockPath = "src-tauri/Cargo.lock";
 
 const tauriConfig = JSON.parse(fs.readFileSync(tauriConfigPath, "utf8"));
 tauriConfig.version = version;
@@ -118,6 +119,19 @@ const cargoToml = fs.readFileSync(cargoTomlPath, "utf8").replace(
   `version = "${version}"`
 );
 fs.writeFileSync(cargoTomlPath, cargoToml);
+
+const cargoLock = fs.readFileSync(cargoLockPath, "utf8");
+const packageVersionPattern =
+  /(\[\[package\]\]\nname = "chart-viewer"\nversion = ")[^"]+(")/;
+
+if (!packageVersionPattern.test(cargoLock)) {
+  throw new Error(`Could not update chart-viewer package version in ${cargoLockPath}`);
+}
+
+fs.writeFileSync(
+  cargoLockPath,
+  cargoLock.replace(packageVersionPattern, `$1${version}$2`)
+);
 ' "$version_number"
 
 echo -e "新版本: ${GREEN}${new_version}${NC}"
@@ -142,13 +156,13 @@ echo
 
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     # 恢复版本号
-    git checkout package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml 2>/dev/null || true
+    git checkout package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock 2>/dev/null || true
     echo -e "${YELLOW}已取消发布${NC}"
     exit 1
 fi
 
 # 提交更改
-git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
+git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
 git commit -m "chore: bump version to ${new_version}"
 
 # 创建标签

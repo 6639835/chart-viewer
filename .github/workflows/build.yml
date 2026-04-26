@@ -52,34 +52,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Sync Cargo.lock app version
-        shell: bash
-        run: |
-          node - <<'NODE'
-          const fs = require("fs");
-
-          const manifestPath = "src-tauri/Cargo.toml";
-          const lockPath = "src-tauri/Cargo.lock";
-          const manifest = fs.readFileSync(manifestPath, "utf8");
-          const lockfile = fs.readFileSync(lockPath, "utf8");
-          const version = manifest.match(/^\[package\][\s\S]*?^version = "([^"]+)"/m)?.[1];
-
-          if (!version) {
-            throw new Error(`Could not read package version from ${manifestPath}`);
-          }
-
-          const packageVersionPattern =
-            /(\[\[package\]\]\nname = "chart-viewer"\nversion = ")[^"]+(")/;
-
-          if (!packageVersionPattern.test(lockfile)) {
-            throw new Error(`Could not update chart-viewer package version in ${lockPath}`);
-          }
-
-          const updated = lockfile.replace(packageVersionPattern, `$1${version}$2`);
-
-          fs.writeFileSync(lockPath, updated);
-          NODE
-
       - name: Lint
         run: npm run lint
 

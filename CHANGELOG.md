@@ -21,6 +21,17 @@
 
 ---
 
+## [3.4.1] - 2026-04-26
+
+### 修复
+
+- **修复发布脚本未同步 `src-tauri/Cargo.lock` 版本的问题**：
+  - `scripts/release.sh` 在同步 `package.json`、`src-tauri/tauri.conf.json` 和 `src-tauri/Cargo.toml` 后，会同步更新 `Cargo.lock` 中 `chart-viewer` 包版本
+  - 发布取消回滚和版本提交时都包含 `src-tauri/Cargo.lock`
+  - 避免 GitHub Actions 构建阶段修改锁文件，版本同步逻辑回归发布流程
+
+---
+
 ## [3.4.0] - 2026-04-26
 
 ### 新增
@@ -1338,7 +1349,8 @@
 - **beta**：功能完整，但可能有问题
 - **rc**：候选发布版本，准备正式发布
 
-[未发布]: https://github.com/6639835/chart-viewer/compare/v3.4.0...HEAD
+[未发布]: https://github.com/6639835/chart-viewer/compare/v3.4.1...HEAD
+[3.4.1]: https://github.com/6639835/chart-viewer/compare/v3.4.0...v3.4.1
 [3.4.0]: https://github.com/6639835/chart-viewer/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/6639835/chart-viewer/compare/v3.2.2...v3.3.0
 [3.2.2]: https://github.com/6639835/chart-viewer/compare/v3.2.1...v3.2.2
