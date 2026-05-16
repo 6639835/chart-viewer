@@ -22,6 +22,7 @@ import {
   FileText,
   Maximize2,
   Menu,
+  RotateCw,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -184,6 +185,7 @@ export default function PDFViewer({
     "pdf.failedToLoad" | "pdf.failedToRender" | null
   >(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [rotation, setRotation] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -464,6 +466,7 @@ export default function PDFViewer({
     setDocumentLoading(true);
     setPageRendering(false);
     setErrorKey(null);
+    setRotation(0);
     cancelRender();
     clearPageCache();
 
@@ -557,7 +560,7 @@ export default function PDFViewer({
         return;
       }
 
-      const baseViewport = page.getViewport({ scale: 1 });
+      const baseViewport = page.getViewport({ scale: 1, rotation });
       const nextPageSize = {
         width: baseViewport.width,
         height: baseViewport.height,
@@ -570,7 +573,7 @@ export default function PDFViewer({
       );
 
       const safeRenderScale = clamp(renderScale, MIN_ZOOM, MAX_ZOOM);
-      const viewport = page.getViewport({ scale: safeRenderScale });
+      const viewport = page.getViewport({ scale: safeRenderScale, rotation });
       const pixelRatio = getCanvasPixelRatio(
         nextPageSize,
         safeRenderScale,
@@ -644,6 +647,7 @@ export default function PDFViewer({
     pdfDocument,
     preloadAdjacentPages,
     renderScale,
+    rotation,
     trimPageCache,
   ]);
 
@@ -787,6 +791,10 @@ export default function PDFViewer({
     });
   };
 
+  const rotateClockwise = () => {
+    setRotation((prev) => (prev + 90) % 360);
+  };
+
   if (errorKey) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-200 dark:bg-gray-900">
@@ -862,6 +870,14 @@ export default function PDFViewer({
             title={t("pdf.fitToWindow")}
           >
             <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </button>
+
+          <button
+            onClick={rotateClockwise}
+            className="flex p-1 sm:p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+            title={t("pdf.rotateClockwise")}
+          >
+            <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
 
           {bookmarkedCharts.length > 1 &&

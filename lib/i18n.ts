@@ -68,6 +68,7 @@ export type TranslationKey =
   | "pdf.prev"
   | "pdf.previousBookmark"
   | "pdf.renderingPdf"
+  | "pdf.rotateClockwise"
   | "pdf.zoomIn"
   | "pdf.zoomOut"
   | "update.available"
@@ -161,6 +162,7 @@ export const translations: Record<Locale, Translations> = {
     "pdf.prev": "PREV",
     "pdf.previousBookmark": "Previous Bookmark",
     "pdf.renderingPdf": "Rendering PDF...",
+    "pdf.rotateClockwise": "Rotate 90°",
     "pdf.zoomIn": "Zoom In",
     "pdf.zoomOut": "Zoom Out",
     "update.available": "New Update Available",
@@ -240,6 +242,7 @@ export const translations: Record<Locale, Translations> = {
     "pdf.prev": "上一页",
     "pdf.previousBookmark": "上一个书签",
     "pdf.renderingPdf": "正在渲染 PDF...",
+    "pdf.rotateClockwise": "顺时针旋转 90°",
     "pdf.zoomIn": "放大",
     "pdf.zoomOut": "缩小",
     "update.available": "发现新版本",
