@@ -17,6 +17,7 @@
 # tauri
 /src-tauri/target/
 /src-tauri/gen/
+/src-tauri/resources/__pycache__/
 
 # misc
 .DS_Store
