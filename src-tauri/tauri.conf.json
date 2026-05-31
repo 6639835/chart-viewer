@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost chart-pdf: http://chart-pdf.localhost https://github.com https://api.github.com; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; frame-src 'self' blob: chart-pdf: http://chart-pdf.localhost; object-src 'none'"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost tauri://localhost chart-pdf: http://chart-pdf.localhost https://github.com https://api.github.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://tile.opentopomap.org https://*.tile.opentopomap.org; script-src 'self' blob: 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: tauri://localhost https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://tile.opentopomap.org https://*.tile.opentopomap.org; worker-src 'self' blob: tauri://localhost; frame-src 'self' blob: chart-pdf: http://chart-pdf.localhost; object-src 'none'"
     }
   },
   "bundle": {
