@@ -1,19 +1,39 @@
 /** @type {import('next').NextConfig} */
+const webpack = require("webpack");
+
 const nextConfig = {
   reactStrictMode: true,
   output: "export",
 
-  // Production optimizations
   compress: true,
   poweredByHeader: false,
 
-  // Turbopack configuration (Next.js 16 default)
-  // Note: canvas aliasing is handled differently in Turbopack
-  turbopack: {},
+  // Turbopack (next dev) — define CESIUM_BASE_URL at compile time
+  turbopack: {
+    define: {
+      CESIUM_BASE_URL: JSON.stringify("/cesium/"),
+    },
+  },
 
-  // Webpack fallback configuration (for --webpack flag)
+  // Webpack (next build / --webpack) — same define via DefinePlugin
   webpack: (config) => {
     config.resolve.alias.canvas = false;
+
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      https: false,
+      zlib: false,
+      http: false,
+      url: false,
+      fs: false,
+    };
+
+    config.plugins.push(
+      new webpack.DefinePlugin({
+        CESIUM_BASE_URL: JSON.stringify("/cesium/"),
+      })
+    );
+
     return config;
   },
 };

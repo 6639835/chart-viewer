@@ -128,3 +128,15 @@ body {
 .auto-hide-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #6b7280 !important;
 }
+
+/* Cesium widget reset — prevent its styles from bleeding outside the globe container */
+.cesium-widget,
+.cesium-widget canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Hide Cesium's default credit container (we provide our own credit string) */
+.cesium-credit-logoContainer {
+  display: none !important;
+}

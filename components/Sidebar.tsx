@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
-import { ChevronDown, Search, X, Settings } from "lucide-react";
+import { ChevronDown, Search, X, Settings, Globe } from "lucide-react";
 import { ChartCategory, CATEGORY_ORDER } from "@/types/chart";
 import ThemeToggle from "./ThemeToggle";
 import { useAutoHideScrollbar } from "@/lib/hooks/useAutoHideScrollbar";
@@ -16,6 +16,7 @@ interface SidebarProps {
   categoryCounts: Record<ChartCategory, number>;
   onClose?: () => void;
   onOpenSettings?: () => void;
+  onOpenGlobe?: () => void;
   onCloseCategory?: () => void;
 }
 
@@ -28,6 +29,7 @@ export default function Sidebar({
   categoryCounts,
   onClose,
   onOpenSettings,
+  onOpenGlobe,
   onCloseCategory,
 }: SidebarProps) {
   const { t, tc } = useI18n();
@@ -186,6 +188,18 @@ export default function Sidebar({
       <div className="p-2 border-t border-gray-300 dark:border-gray-800 space-y-2">
         {/* Theme Toggle */}
         <ThemeToggle />
+
+        {/* Globe button */}
+        {onOpenGlobe && (
+          <button
+            onClick={onOpenGlobe}
+            className="w-full p-2 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded flex items-center justify-center transition-colors"
+            aria-label="Open 3D Globe"
+            title="3D Globe"
+          >
+            <Globe className="w-5 h-5" />
+          </button>
+        )}
 
         {/* Settings button */}
         {onOpenSettings && (

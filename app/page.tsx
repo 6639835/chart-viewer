@@ -32,6 +32,10 @@ const PDFViewer = nextDynamic(() => import("@/components/PDFViewer"), {
   loading: () => <PDFViewerLoading />,
 });
 
+const GlobeViewer = nextDynamic(() => import("@/components/GlobeViewer"), {
+  ssr: false,
+});
+
 function findAirportDiagramChart(charts: ChartData[]): ChartData | null {
   // Try exact match of "机场图" first.
   const exact = charts.find((chart) => chart.ChartName === "机场图");
@@ -62,6 +66,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isGlobeOpen, setIsGlobeOpen] = useState(false);
   const [bookmarkedCharts, setBookmarkedCharts] = useState<Set<string>>(
     new Set()
   );
@@ -303,6 +308,7 @@ export default function Home() {
                 categoryCounts={categoryCounts}
                 onClose={() => setIsSidebarOpen(false)}
                 onOpenSettings={() => setIsSettingsOpen(true)}
+                onOpenGlobe={() => setIsGlobeOpen(true)}
                 onCloseCategory={handleCloseCategory}
               />
             </div>
@@ -320,6 +326,7 @@ export default function Home() {
           onCategoryChange={handleCategoryChange}
           categoryCounts={categoryCounts}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenGlobe={() => setIsGlobeOpen(true)}
           onCloseCategory={handleCloseCategory}
         />
       </div>
@@ -396,6 +403,14 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* 3D Globe Viewer */}
+      {isGlobeOpen && (
+        <GlobeViewer
+          onClose={() => setIsGlobeOpen(false)}
+          targetAirport={selectedAirport}
+        />
+      )}
 
       {/* Settings Modal */}
       <SettingsModal
