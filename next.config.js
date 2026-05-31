@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
+const path = require("path");
 const webpack = require("webpack");
+
+const cesiumSpzStub = path.join(__dirname, "lib/cesiumSpzStub.js");
 
 const nextConfig = {
   reactStrictMode: true,
@@ -14,7 +17,14 @@ const nextConfig = {
 
   // Webpack (next build / --webpack) — same define via DefinePlugin
   webpack: (config) => {
-    config.resolve.alias.canvas = false;
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      canvas: false,
+      // The app uses Cesium for the base globe/map, not Gaussian-splat SPZ
+      // tiles. The SPZ loader embeds an Emscripten wasm module that the static
+      // production bundle emits as invalid JavaScript.
+      "@spz-loader/core": cesiumSpzStub,
+    };
 
     config.resolve.fallback = {
       ...config.resolve.fallback,
