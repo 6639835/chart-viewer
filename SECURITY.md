@@ -6,8 +6,8 @@ We actively support the following versions of Chart Viewer with security updates
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+| 3.x     | :white_check_mark: |
+| < 3.0   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -102,26 +102,26 @@ Chart Viewer requires file system access to read chart files. This is necessary 
 - **File type validation**: We validate file types before processing
 - **Path sanitization**: All file paths are sanitized before use
 
-### Electron Security
+### Tauri Security
 
-As an Electron application, Chart Viewer inherits Electron's security model:
+As a Tauri application, Chart Viewer uses Tauri's desktop security model:
 
-- **Context isolation**: Enabled by default
-- **Node integration**: Carefully controlled
-- **Remote module**: Disabled for security
-- **Sandboxing**: Implemented where possible
+- **Command allowlists**: Frontend access is limited by Tauri capabilities
+- **Content Security Policy**: Renderer content is constrained by CSP
+- **Custom protocol controls**: Local chart PDFs are served through a restricted protocol
+- **Native sidecars**: Bundled helper binaries are treated as part of the trusted application
 
 ### Network Security
 
-- **Local server**: Chart Viewer runs a local HTTP server
-- **Port binding**: Server binds to localhost only
-- **No external connections**: Application does not make external network connections by default
+- **Local protocols**: Chart Viewer uses local/custom protocols for chart display
+- **Updater endpoint**: Update checks contact the configured GitHub Releases endpoint
+- **Map tiles**: Globe view may request map tiles from the selected tile provider
 
 ## Security Updates
 
 ### Automatic Updates
 
-Chart Viewer supports automatic updates through Electron's auto-updater:
+Chart Viewer supports automatic updates through the Tauri updater:
 
 - **Signed updates**: All updates are cryptographically signed
 - **Integrity verification**: Update integrity is verified before installation
