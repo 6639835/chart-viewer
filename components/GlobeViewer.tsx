@@ -6,12 +6,14 @@ import {
   Layers,
   Loader2,
   Minus,
+  Navigation,
   Plus,
   SlidersHorizontal,
   X,
 } from "lucide-react";
 import type { ChartCorners } from "@/types/georef";
 import type { AirportCoord } from "@/lib/tauriClient";
+import type { OwnshipPosition } from "@/lib/gdl90";
 
 export interface ChartOverlayData {
   chartId: string;
@@ -26,6 +28,7 @@ interface GlobeViewerProps {
   chartOverlay?: ChartOverlayData | null;
   chartOverlayLoading?: boolean;
   airportCoords?: AirportCoord[];
+  ownshipPosition?: OwnshipPosition | null;
 }
 
 function formatAltitude(meters: number): string {
@@ -88,6 +91,8 @@ const WHEEL_PAN_SENSITIVITY = 0.0012;
 const MIN_CAMERA_HEIGHT_METERS = 250;
 const MAX_CAMERA_HEIGHT_METERS = 25_000_000;
 const AIRPORT_HOME_HEIGHT_METERS = 20_000;
+const AIRCRAFT_CENTER_MIN_HEIGHT_METERS = 5_000;
+const AIRCRAFT_CENTER_MAX_HEIGHT_METERS = 120_000;
 const MAX_GLOBE_DEVICE_PIXEL_RATIO = 2;
 const DEFAULT_CHART_OVERLAY_ALPHA = 0.95;
 const GLOBE_MAX_SCREEN_SPACE_ERROR = 2.5;
@@ -419,6 +424,86 @@ function flyToChartOverlay(
   });
 }
 
+function flyToOwnship(
+  viewer: {
+    camera: {
+      positionCartographic: { height: number };
+      flyTo: (options: {
+        destination: import("cesium").Cartesian3;
+        orientation: { heading: number; pitch: number; roll: number };
+        duration?: number;
+      }) => void;
+    };
+  },
+  Cesium: typeof import("cesium"),
+  ownshipPosition: OwnshipPosition,
+  duration = 0.8
+) {
+  const currentHeight = clampCameraHeight(
+    viewer.camera.positionCartographic.height
+  );
+  const centerHeight = clamp(
+    currentHeight,
+    AIRCRAFT_CENTER_MIN_HEIGHT_METERS,
+    AIRCRAFT_CENTER_MAX_HEIGHT_METERS
+  );
+
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(
+      ownshipPosition.lon,
+      ownshipPosition.lat,
+      centerHeight
+    ),
+    orientation: {
+      heading: 0,
+      pitch: Cesium.Math.toRadians(-90),
+      roll: 0,
+    },
+    duration,
+  });
+}
+
+function getAircraftBillboardRotation(
+  Cesium: typeof import("cesium"),
+  trackDeg: number | null
+) {
+  return trackDeg !== null ? -Cesium.Math.toRadians(trackDeg) : 0;
+}
+
+function createOwnshipMarkerCanvas() {
+  const iconSize = 48;
+  const iconCanvas = document.createElement("canvas");
+  iconCanvas.width = iconSize;
+  iconCanvas.height = iconSize;
+  const ctx = iconCanvas.getContext("2d")!;
+  const cx = iconSize / 2;
+  const cy = iconSize / 2;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.shadowColor = "rgba(0,0,0,0.7)";
+  ctx.shadowBlur = 4;
+  ctx.scale(1.65, 1.65);
+  ctx.translate(-12, -12);
+
+  ctx.fillStyle = "#3b82f6";
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(12, 2);
+  ctx.lineTo(19, 21);
+  ctx.lineTo(12, 17);
+  ctx.lineTo(5, 21);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.stroke();
+
+  ctx.restore();
+  return iconCanvas;
+}
+
 function zoomGlobeByDirection(
   viewer: GlobeViewerInstance,
   direction: "in" | "out",
@@ -501,6 +586,7 @@ export default function GlobeViewer({
   chartOverlay,
   chartOverlayLoading = false,
   airportCoords,
+  ownshipPosition,
 }: GlobeViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Store the full Cesium Viewer type at runtime but keep TS happy with unknown
@@ -514,6 +600,8 @@ export default function GlobeViewer({
   const headingRef = useRef(0);
   const cursorCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
   const tilesLoadingRef = useRef(false);
+  const aircraftEntityRef = useRef<unknown>(null);
+  const aircraftIconCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [altitude, setAltitude] = useState<number | null>(null);
   const [heading, setHeading] = useState(0); // degrees, for compass needle
@@ -854,6 +942,8 @@ export default function GlobeViewer({
         baseLayerRef.current = null;
         overlayLayerRef.current = null;
         activeOverlayImageUrlRef.current = null;
+        aircraftEntityRef.current = null;
+        aircraftIconCanvasRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -928,6 +1018,100 @@ export default function GlobeViewer({
     viewer?.scene?.requestRender?.();
   }, [chartOverlayAlpha]);
 
+  // Aircraft ownship marker — create once, mutate position/rotation/label on updates.
+  // Never remove + re-add: that causes a one-frame gap (flicker).
+  useEffect(() => {
+    const Cesium = cesiumRef.current;
+    const rawViewer = viewerRef.current as {
+      entities: {
+        add: (entity: unknown) => unknown;
+        remove: (entity: unknown) => boolean;
+      };
+      scene: { requestRender?: () => void };
+    } | null;
+    if (!Cesium || !rawViewer) return;
+
+    if (!ownshipPosition) {
+      if (aircraftEntityRef.current) {
+        (aircraftEntityRef.current as { show: boolean }).show = false;
+        rawViewer.scene.requestRender?.();
+      }
+      return;
+    }
+
+    const { lat, lon, altitudeFt, trackDeg } = ownshipPosition;
+    const heightM = altitudeFt !== null ? altitudeFt * 0.3048 : 0;
+    const position = Cesium.Cartesian3.fromDegrees(lon, lat, heightM + CHART_OVERLAY_HEIGHT_METERS);
+    const rotationRad = getAircraftBillboardRotation(Cesium, trackDeg);
+    const iconCanvas =
+      aircraftIconCanvasRef.current ?? createOwnshipMarkerCanvas();
+    aircraftIconCanvasRef.current = iconCanvas;
+
+    const metaParts: string[] = [];
+    if (altitudeFt !== null) metaParts.push(`${Math.round(altitudeFt)} ft`);
+    if (ownshipPosition.groundSpeedKt !== null) metaParts.push(`${Math.round(ownshipPosition.groundSpeedKt)} kt`);
+    if (trackDeg !== null) metaParts.push(`HDG ${Math.round(trackDeg).toString().padStart(3, "0")}°`);
+    const labelText = metaParts.length > 0 ? metaParts.join("  ·  ") : `${lat.toFixed(3)}°  ${lon.toFixed(3)}°`;
+
+    // If the entity already exists, just update its mutable properties in place.
+    if (aircraftEntityRef.current) {
+      const e = aircraftEntityRef.current as {
+        show: boolean;
+        position: unknown;
+        billboard: {
+          alignedAxis: import("cesium").Cartesian3;
+          image: HTMLCanvasElement;
+          rotation: number;
+        };
+        label: { text: string };
+      };
+      e.show = true;
+      e.position = new Cesium.ConstantPositionProperty(position);
+      e.billboard.alignedAxis = Cesium.Cartesian3.UNIT_Z;
+      e.billboard.image = iconCanvas;
+      e.billboard.rotation = rotationRad;
+      e.label.text = labelText;
+      rawViewer.scene.requestRender?.();
+      return;
+    }
+
+    const ICON_SIZE = 48;
+
+    const entity = rawViewer.entities.add({
+      position,
+      billboard: {
+        image: iconCanvas,
+        width: ICON_SIZE,
+        height: ICON_SIZE,
+        alignedAxis: Cesium.Cartesian3.UNIT_Z,
+        rotation: rotationRad,
+        heightReference: Cesium.HeightReference.NONE,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        verticalOrigin: Cesium.VerticalOrigin.CENTER,
+        horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+      },
+      label: {
+        text: labelText,
+        font: "bold 12px sans-serif",
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(0, ICON_SIZE / 2 + 8),
+        verticalOrigin: Cesium.VerticalOrigin.TOP,
+        horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+        heightReference: Cesium.HeightReference.NONE,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        showBackground: true,
+        backgroundColor: Cesium.Color.fromCssColorString("#1e3a5f").withAlpha(0.85),
+        backgroundPadding: new Cesium.Cartesian2(6, 4),
+      },
+    });
+
+    aircraftEntityRef.current = entity;
+    rawViewer.scene.requestRender?.();
+  }, [ownshipPosition, viewerReadyKey]);
+
   const zoom = useCallback((inOut: "in" | "out") => {
     const viewer = getGlobeViewer(viewerRef.current);
     if (!viewer) return;
@@ -958,6 +1142,21 @@ export default function GlobeViewer({
     }
     viewer.scene.requestRender?.();
   }, [airportCoords, chartOverlay, targetAirport]);
+
+  const centerAircraft = useCallback(() => {
+    const viewer = viewerRef.current as {
+      camera: {
+        positionCartographic: { height: number };
+        flyTo: (opts: unknown) => void;
+      };
+      scene: { requestRender?: () => void };
+    } | null;
+    const Cesium = cesiumRef.current;
+    if (!viewer || !Cesium || !ownshipPosition) return;
+
+    flyToOwnship(viewer, Cesium, ownshipPosition);
+    viewer.scene.requestRender?.();
+  }, [ownshipPosition]);
 
   const resetNorth = useCallback(() => {
     const viewer = viewerRef.current as {
@@ -1142,6 +1341,17 @@ export default function GlobeViewer({
           <Home className="w-4 h-4" />
         </button>
 
+        {ownshipPosition && (
+          <button
+            onClick={centerAircraft}
+            className="w-9 h-9 bg-black/60 hover:bg-black/80 text-blue-400 rounded-lg flex items-center justify-center transition-colors"
+            title="Center aircraft"
+            aria-label="Center aircraft"
+          >
+            <Navigation className="w-4 h-4" />
+          </button>
+        )}
+
         {/* Zoom in */}
         <button
           onClick={() => zoom("in")}
@@ -1165,6 +1375,19 @@ export default function GlobeViewer({
 
       {/* ── Bottom status bar ── */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 flex gap-3 items-center px-3 py-1.5 bg-black/60 rounded-full text-xs text-white/80 pointer-events-none select-none">
+        {/* Ownship ADS-B indicator */}
+        {ownshipPosition && (
+          <>
+            <span className="flex items-center gap-1 text-blue-400 font-semibold" title="ADS-B ownship position">
+              <Navigation className="w-3 h-3" />
+              {ownshipPosition.lat.toFixed(4)}° {ownshipPosition.lon.toFixed(4)}°
+              {ownshipPosition.altitudeFt !== null && ` · ${Math.round(ownshipPosition.altitudeFt)} ft`}
+              {ownshipPosition.groundSpeedKt !== null && ` · ${Math.round(ownshipPosition.groundSpeedKt)} kt`}
+              {ownshipPosition.trackDeg !== null && ` · HDG ${Math.round(ownshipPosition.trackDeg).toString().padStart(3, "0")}°`}
+            </span>
+            <span className="opacity-40">|</span>
+          </>
+        )}
         {/* Altitude */}
         {altitude !== null && (
           <span title="Camera altitude">↕ {formatAltitude(altitude)}</span>

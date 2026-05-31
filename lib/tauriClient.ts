@@ -220,3 +220,11 @@ export async function installUpdate(): Promise<void> {
   await update.install();
   await relaunch();
 }
+
+export async function startGdl90Listener(port: number): Promise<void> {
+  return invoke("start_gdl90_listener", { port });
+}
+
+export async function stopGdl90Listener(): Promise<void> {
+  return invoke("stop_gdl90_listener");
+}

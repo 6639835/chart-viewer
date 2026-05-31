@@ -309,6 +309,31 @@ export default function SettingsModal({
 
               <div>
                 <label
+                  htmlFor="settings-gdl90-port"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                >
+                  GDL90 UDP Port
+                </label>
+                <input
+                  id="settings-gdl90-port"
+                  name="gdl90Port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={config.gdl90Port ?? 4000}
+                  onChange={(e) =>
+                    setConfig({ ...config, gdl90Port: parseInt(e.target.value, 10) || 4000 })
+                  }
+                  autoComplete="off"
+                  className="w-40 px-3 sm:px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  UDP port for GDL90 ADS-B data (e.g. ForeFlight broadcasts on 4000). Set to 0 to disable.
+                </p>
+              </div>
+
+              <div>
+                <label
                   id="settings-language-label"
                   className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
                 >

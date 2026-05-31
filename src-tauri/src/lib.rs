@@ -4,14 +4,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
+use std::net::UdpSocket;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{
     http::{Request, Response},
-    AppHandle, Manager,
+    AppHandle, Emitter, Manager,
 };
 
 const CONFIG_FILE: &str = "config.json";
@@ -27,18 +29,187 @@ struct PdfPathCache {
     paths: Mutex<HashMap<String, PathBuf>>,
 }
 
+/// Shared state for the GDL90 UDP listener thread.
+struct Gdl90State {
+    /// Port currently being listened on (0 = stopped).
+    port: AtomicU16,
+    /// Signal the listener thread to stop.
+    stop: AtomicBool,
+}
+
+impl Default for Gdl90State {
+    fn default() -> Self {
+        Self {
+            port: AtomicU16::new(0),
+            stop: AtomicBool::new(false),
+        }
+    }
+}
+
+// ── GDL90 parsing ────────────────────────────────────────────────────────────
+
+/// CRC-CCITT (polynomial 0x1021).
+fn gdl90_crc16(data: &[u8]) -> u16 {
+    static TABLE: std::sync::OnceLock<[u16; 256]> = std::sync::OnceLock::new();
+    let table = TABLE.get_or_init(|| {
+        let mut t = [0u16; 256];
+        for (i, entry) in t.iter_mut().enumerate() {
+            let mut crc: u16 = (i as u16) << 8;
+            for _ in 0..8 {
+                crc = if crc & 0x8000 != 0 { (crc << 1) ^ 0x1021 } else { crc << 1 };
+            }
+            *entry = crc;
+        }
+        t
+    });
+    let mut crc: u16 = 0;
+    for &b in data {
+        crc = table[((crc >> 8) & 0xff) as usize] ^ ((crc << 8) & 0xffff) ^ b as u16;
+    }
+    crc
+}
+
+/// Remove HDLC byte stuffing.
+fn gdl90_unstuff(raw: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(raw.len());
+    let mut i = 0;
+    while i < raw.len() {
+        if raw[i] == 0x7d {
+            i += 1;
+            if i < raw.len() { out.push(raw[i] ^ 0x20); }
+        } else {
+            out.push(raw[i]);
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Signed 24-bit from big-endian bytes.
+fn s24(a: u8, b: u8, c: u8) -> i32 {
+    let u = ((a as u32) << 16) | ((b as u32) << 8) | (c as u32);
+    if u >= 0x80_0000 { u as i32 - 0x100_0000 } else { u as i32 }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OwnshipPosition {
+    lat: f64,
+    lon: f64,
+    altitude_ft: Option<f64>,
+    track_deg: Option<f64>,
+    ground_speed_kt: Option<f64>,
+}
+
+/// Parse a GDL90 Ownship Report body (27 bytes after msgID).
+fn decode_ownship_body(body: &[u8]) -> Option<OwnshipPosition> {
+    if body.len() < 27 { return None; }
+    let lat = s24(body[4], body[5], body[6]) as f64 * (180.0 / 0x80_0000 as f64);
+    let lon = s24(body[7], body[8], body[9]) as f64 * (180.0 / 0x80_0000 as f64);
+    let alt_raw = ((body[10] as u16) << 4) | ((body[11] >> 4) as u16);
+    let altitude_ft = if alt_raw == 0xfff { None } else { Some(alt_raw as f64 * 25.0 - 1000.0) };
+    let misc = body[11] & 0x0f;
+    let track_valid = (misc & 0x03) != 0;
+    let gs_raw = ((body[13] as u16) << 4) | ((body[14] >> 4) as u16);
+    let ground_speed_kt = if gs_raw == 0xfff { None } else { Some(gs_raw as f64) };
+    let track_deg = if track_valid { Some(body[16] as f64 / 256.0 * 360.0) } else { None };
+    let nic = (body[12] >> 4) & 0x0f;
+    if nic == 0 && lat == 0.0 && lon == 0.0 { return None; }
+    Some(OwnshipPosition { lat, lon, altitude_ft, track_deg, ground_speed_kt })
+}
+
+/// Scan a UDP datagram for the first valid GDL90 Ownship Report (msg 10).
+fn parse_gdl90_datagram(buf: &[u8]) -> Option<OwnshipPosition> {
+    let mut i = 0;
+    while i < buf.len() {
+        if buf[i] != 0x7e { i += 1; continue; }
+        let frame_start = i + 1;
+        i += 1;
+        while i < buf.len() && buf[i] != 0x7e { i += 1; }
+        if i >= buf.len() { break; }
+        let between = &buf[frame_start..i];
+        i += 1;
+        if between.len() < 3 { continue; }
+        let clear = gdl90_unstuff(between);
+        if clear.len() < 3 { continue; }
+        let payload = &clear[..clear.len() - 2];
+        let fcs_lo = clear[clear.len() - 2];
+        let fcs_hi = clear[clear.len() - 1];
+        if gdl90_crc16(payload) != ((fcs_hi as u16) << 8 | fcs_lo as u16) { continue; }
+        if payload.is_empty() { continue; }
+        if (payload[0] & 0x7f) == 10 && payload.len() >= 28 {
+            if let Some(pos) = decode_ownship_body(&payload[1..]) {
+                return Some(pos);
+            }
+        }
+    }
+    None
+}
+
+// ── Tauri commands ────────────────────────────────────────────────────────────
+
+/// Start listening for GDL90 UDP packets on `port` and emit
+/// `"gdl90-position"` events to the frontend. Calling this again with a
+/// different port (or with port=0 to stop) first stops the previous listener.
+#[tauri::command]
+fn start_gdl90_listener(app: AppHandle, port: u16) -> Result<(), String> {
+    let state = app.state::<Arc<Gdl90State>>();
+    // Stop any existing listener.
+    state.stop.store(true, Ordering::SeqCst);
+    if port == 0 {
+        state.port.store(0, Ordering::SeqCst);
+        return Ok(());
+    }
+    let socket = UdpSocket::bind(format!("0.0.0.0:{port}"))
+        .map_err(|e| format!("Cannot bind UDP port {port}: {e}"))?;
+    socket.set_read_timeout(Some(Duration::from_millis(500)))
+        .map_err(|e| format!("set_read_timeout: {e}"))?;
+    state.stop.store(false, Ordering::SeqCst);
+    state.port.store(port, Ordering::SeqCst);
+    let stop_flag = Arc::clone(&*state);
+    thread::spawn(move || {
+        let mut buf = [0u8; 4096];
+        loop {
+            if stop_flag.stop.load(Ordering::SeqCst) { break; }
+            match socket.recv(&mut buf) {
+                Ok(n) => {
+                    if let Some(pos) = parse_gdl90_datagram(&buf[..n]) {
+                        let _ = app.emit("gdl90-position", &pos);
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut => {}
+                Err(_) => break,
+            }
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_gdl90_listener(app: AppHandle) {
+    let state = app.state::<Arc<Gdl90State>>();
+    state.stop.store(true, Ordering::SeqCst);
+    state.port.store(0, Ordering::SeqCst);
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AppConfig {
     charts_directory: String,
     csv_directory: String,
+    #[serde(default = "default_gdl90_port")]
+    gdl90_port: u16,
 }
+
+fn default_gdl90_port() -> u16 { 4000 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             charts_directory: "charts".to_string(),
             csv_directory: "csv".to_string(),
+            gdl90_port: default_gdl90_port(),
         }
     }
 }
@@ -151,6 +322,7 @@ fn read_config(app: &AppHandle) -> AppConfig {
         } else {
             saved.csv_directory
         },
+        gdl90_port: saved.gdl90_port,
     }
 }
 
@@ -953,6 +1125,7 @@ async fn georeference_chart(
 pub fn run() {
     tauri::Builder::default()
         .manage(PdfPathCache::default())
+        .manage(Arc::new(Gdl90State::default()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
@@ -965,7 +1138,9 @@ pub fn run() {
             save_config,
             read_chart_sources,
             read_airport_coords,
-            georeference_chart
+            georeference_chart,
+            start_gdl90_listener,
+            stop_gdl90_listener
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

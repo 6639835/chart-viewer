@@ -14,9 +14,10 @@ import {
   openExternal,
   georeferenceChart,
   readAirportCoords,
+  getConfig,
   type AirportCoord,
 } from "@/lib/tauriClient";
-import type { GeorefResult } from "@/types/georef";
+import type { GeorefResult, GeorefPageResult } from "@/types/georef";
 import {
   CATEGORY_ORDER,
   type ChartCategory,
@@ -25,6 +26,7 @@ import {
 } from "@/types/chart";
 import { computePageCorners } from "@/lib/georefMath";
 import type { ChartOverlayData } from "@/components/GlobeViewer";
+import { useGdl90 } from "@/lib/useGdl90";
 import { Loader2 } from "lucide-react";
 
 const MAP_OVERLAY_CACHE_LIMIT = 2;
@@ -118,9 +120,12 @@ export default function Home() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGlobeOpen, setIsGlobeOpen] = useState(false);
+  const [gdl90Port, setGdl90Port] = useState<number>(4000);
+  const ownshipPosition = useGdl90(gdl90Port > 0 ? gdl90Port : undefined);
   const [georefOverlay, setGeorefOverlay] = useState<ChartOverlayData | null>(
     null
   );
+  const [currentGeorefPage, setCurrentGeorefPage] = useState<GeorefPageResult | null>(null);
   const [georefLoading, setGeorefLoading] = useState(false);
   const [georefError, setGeorefError] = useState<string | null>(null);
   const getPageImageRef = useRef<
@@ -177,12 +182,14 @@ export default function Home() {
     setLoading(true);
     setLoadError(false);
     try {
-      const [data, coords] = await Promise.all([
+      const [data, coords, cfg] = await Promise.all([
         loadGroupedCharts(),
         readAirportCoords().catch(() => [] as AirportCoord[]),
+        getConfig().catch(() => null),
       ]);
       setGroupedCharts(data);
       setAirportCoords(coords);
+      if (cfg?.gdl90Port !== undefined) setGdl90Port(cfg.gdl90Port);
       const airportList = Object.keys(data).sort();
       setAirports(airportList);
 
@@ -338,7 +345,7 @@ export default function Home() {
   };
 
   const handleSettingsSaved = () => {
-    // Reload charts after settings are saved
+    // Reload charts and config after settings are saved
     setSelectedChart(null);
     setSelectedCategory(null);
     for (const overlay of mapOverlayCacheRef.current.values()) {
@@ -346,11 +353,15 @@ export default function Home() {
     }
     mapOverlayCacheRef.current.clear();
     georefResultCacheRef.current.clear();
+    void getConfig().then((cfg) => {
+      if (cfg?.gdl90Port !== undefined) setGdl90Port(cfg.gdl90Port);
+    }).catch(() => {});
     loadCharts();
   };
 
   const clearGeorefOverlay = useCallback(() => {
     setGeorefOverlay(null);
+    setCurrentGeorefPage(null);
   }, []);
 
   const cacheMapOverlay = useCallback(
@@ -570,6 +581,7 @@ export default function Home() {
         };
         cacheMapOverlay(mapOverlayCacheKey, overlay);
         setGeorefOverlay(overlay);
+        setCurrentGeorefPage(pageResult);
       } catch (error) {
         if (imageUrl?.startsWith("blob:")) {
           URL.revokeObjectURL(imageUrl);
@@ -723,6 +735,8 @@ export default function Home() {
               onShowOnMap={handleShowOnMap}
               georefLoading={georefLoading}
               getPageImageRef={getPageImageRef}
+              ownshipPosition={ownshipPosition}
+              georefPage={currentGeorefPage}
             />
           ) : (
             <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-500">
@@ -787,6 +801,7 @@ export default function Home() {
           chartOverlay={georefOverlay}
           chartOverlayLoading={georefLoading && !georefOverlay}
           airportCoords={airportCoords}
+          ownshipPosition={ownshipPosition}
         />
       )}
 

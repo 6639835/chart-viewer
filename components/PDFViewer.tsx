@@ -34,6 +34,9 @@ import { useI18n } from "@/components/I18nProvider";
 import { getFormattedChartName } from "@/lib/chartFormatter";
 import { useAutoHideScrollbar } from "@/lib/hooks/useAutoHideScrollbar";
 import { ChartData, isGeoreferenceable } from "@/types/chart";
+import type { GeorefPageResult } from "@/types/georef";
+import type { OwnshipPosition } from "@/lib/gdl90";
+import { worldToPdfPixels } from "@/lib/georefMath";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -55,6 +58,8 @@ interface PDFViewerProps {
       ) => Promise<string | null>)
     | null
   >;
+  ownshipPosition?: OwnshipPosition | null;
+  georefPage?: GeorefPageResult | null;
 }
 
 interface PageSize {
@@ -448,6 +453,8 @@ export default function PDFViewer({
   onShowOnMap,
   georefLoading,
   getPageImageRef,
+  ownshipPosition,
+  georefPage,
 }: PDFViewerProps) {
   const { t, tChartType } = useI18n();
   const [pdfDocument, setPdfDocument] = useState<PDFDocumentProxy | null>(null);
@@ -1403,6 +1410,90 @@ export default function PDFViewer({
                 transition: "opacity 0.12s ease-out, filter 0.12s ease-out",
               }}
             />
+            {/* Ownship ADS-B aircraft overlay */}
+            {(() => {
+              if (!ownshipPosition || !georefPage?.transform || !pageSize || !visibleScale || rotation !== 0) return null;
+              const pdfXY = worldToPdfPixels(
+                georefPage.transform,
+                georefPage.pageWidth,
+                georefPage.pageHeight,
+                ownshipPosition.lon,
+                ownshipPosition.lat
+              );
+              if (!pdfXY) return null;
+              const [pdfX, pdfY] = pdfXY;
+              const dispX = pdfX * visibleScale;
+              const dispY = pdfY * visibleScale;
+              const trackDeg = ownshipPosition.trackDeg ?? 0;
+
+              const metaParts: string[] = [];
+              if (ownshipPosition.altitudeFt !== null) metaParts.push(`${Math.round(ownshipPosition.altitudeFt)} ft`);
+              if (ownshipPosition.groundSpeedKt !== null) metaParts.push(`${Math.round(ownshipPosition.groundSpeedKt)} kt`);
+              if (ownshipPosition.trackDeg !== null) metaParts.push(`HDG ${Math.round(ownshipPosition.trackDeg).toString().padStart(3, "0")}°`);
+              const metaText = metaParts.join("  ·  ");
+
+              return (
+                <div
+                  className="absolute pointer-events-none"
+                  style={{ left: dispX, top: dispY }}
+                >
+                  {/* Aircraft icon — centred exactly on the position fix */}
+                  <svg
+                    width="32"
+                    height="32"
+                    viewBox="0 0 32 32"
+                    style={{
+                      transform: `translate(-50%, -50%) rotate(${trackDeg}deg)`,
+                      filter: "drop-shadow(0 0 3px rgba(0,0,0,0.85)) drop-shadow(0 0 1px rgba(0,0,0,1))",
+                      position: "absolute",
+                    }}
+                  >
+                    {/* Top-view aircraft silhouette, nose pointing up (0° = north) */}
+                    {/* Fuselage */}
+                    <ellipse cx="16" cy="16" rx="3" ry="11" fill="#3b82f6" stroke="white" strokeWidth="1.2" />
+                    {/* Wings */}
+                    <path
+                      d="M16,13 L2,20 L6,21 L16,17 L26,21 L30,20 Z"
+                      fill="#3b82f6"
+                      stroke="white"
+                      strokeWidth="1.2"
+                      strokeLinejoin="round"
+                    />
+                    {/* Tail */}
+                    <path
+                      d="M16,23 L10,28 L13,28 L16,25 L19,28 L22,28 Z"
+                      fill="#3b82f6"
+                      stroke="white"
+                      strokeWidth="1.2"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+
+                  {/* Metadata pill — always rendered below (un-rotated), never overlapping the icon */}
+                  {metaText && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 16 + 4,
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        whiteSpace: "nowrap",
+                        background: "rgba(15,30,60,0.82)",
+                        backdropFilter: "blur(2px)",
+                        borderRadius: "4px",
+                        padding: "2px 6px",
+                        color: "white",
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {metaText}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
