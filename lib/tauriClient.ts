@@ -14,6 +14,7 @@ import {
 } from "@/lib/chartParser";
 import type { AppConfig } from "@/types/config";
 import type { GroupedCharts } from "@/types/chart";
+import type { GeorefResult } from "@/types/georef";
 
 export interface AppInfo {
   name: string;
@@ -111,6 +112,30 @@ export function getPdfUrl(filename: string): string {
   }
 
   return `${CHART_PDF_PROTOCOL}://localhost/${encodeURIComponent(filename)}`;
+}
+
+export async function georeferenceChart(
+  chartId: string,
+  filePath: string,
+  waypointFilePath?: string,
+  pageNumber?: number
+): Promise<GeorefResult> {
+  return invoke<GeorefResult>("georeference_chart", {
+    chartId,
+    filePath,
+    waypointFilePath: waypointFilePath ?? null,
+    pageNumber: pageNumber ?? null,
+  });
+}
+
+export interface AirportCoord {
+  icao: string;
+  lat: number;
+  lon: number;
+}
+
+export async function readAirportCoords(): Promise<AirportCoord[]> {
+  return invoke<AirportCoord[]>("read_airport_coords");
 }
 
 export async function selectDirectory(options: {

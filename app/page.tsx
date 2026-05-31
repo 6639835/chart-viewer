@@ -1,20 +1,57 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import nextDynamic from "next/dynamic";
 import Sidebar from "@/components/Sidebar";
 import ChartList from "@/components/ChartList";
 import SettingsModal from "@/components/SettingsModal";
 import { useI18n } from "@/components/I18nProvider";
 import { getPDFFileName } from "@/lib/chartParser";
-import { getPdfUrl, loadGroupedCharts, openExternal } from "@/lib/tauriClient";
+import {
+  getPdfUrl,
+  loadGroupedCharts,
+  openExternal,
+  georeferenceChart,
+  readAirportCoords,
+  type AirportCoord,
+} from "@/lib/tauriClient";
+import type { GeorefResult } from "@/types/georef";
 import {
   CATEGORY_ORDER,
   type ChartCategory,
   type ChartData,
   type GroupedCharts,
 } from "@/types/chart";
+import { computePageCorners } from "@/lib/georefMath";
+import type { ChartOverlayData } from "@/components/GlobeViewer";
 import { Loader2 } from "lucide-react";
+
+const MAP_OVERLAY_CACHE_LIMIT = 2;
+const GEOREF_RESULT_CACHE_LIMIT = 8;
+
+function getMapOverlayCacheKey(
+  chartId: string,
+  pdfFilePath: string,
+  waypointFilePath: string | undefined,
+  pageNumber: number
+) {
+  return `${chartId}:${pageNumber}:${pdfFilePath}:${waypointFilePath ?? ""}`;
+}
+
+function revokeOverlayImage(overlay: ChartOverlayData) {
+  if (overlay.imageUrl.startsWith("blob:")) {
+    URL.revokeObjectURL(overlay.imageUrl);
+  }
+}
+
+function touchMapEntry<K, V>(cache: Map<K, V>, key: K) {
+  const value = cache.get(key);
+  if (value !== undefined) {
+    cache.delete(key);
+    cache.set(key, value);
+  }
+  return value;
+}
 
 function PDFViewerLoading() {
   const { t } = useI18n();
@@ -58,15 +95,33 @@ function findAirportDiagramChart(charts: ChartData[]): ChartData | null {
 export default function Home() {
   const { t } = useI18n();
   const [groupedCharts, setGroupedCharts] = useState<GroupedCharts>({});
+  const [airportCoords, setAirportCoords] = useState<AirportCoord[]>([]);
   const [airports, setAirports] = useState<string[]>([]);
   const [selectedAirport, setSelectedAirport] = useState<string>("");
   const [selectedCategory, setSelectedCategory] =
     useState<ChartCategory | null>(null);
   const [selectedChart, setSelectedChart] = useState<ChartData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGlobeOpen, setIsGlobeOpen] = useState(false);
+  const [georefOverlay, setGeorefOverlay] = useState<ChartOverlayData | null>(
+    null
+  );
+  const [georefLoading, setGeorefLoading] = useState(false);
+  const [georefError, setGeorefError] = useState<string | null>(null);
+  const getPageImageRef = useRef<
+    ((pageNumber: number) => Promise<string | null>) | null
+  >(null);
+  const mapOverlayCacheRef = useRef<Map<string, ChartOverlayData>>(new Map());
+  const georefResultCacheRef = useRef<Map<string, Promise<GeorefResult>>>(
+    new Map()
+  );
+  const georefRequestIdRef = useRef(0);
+  const georefErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const [bookmarkedCharts, setBookmarkedCharts] = useState<Set<string>>(
     new Set()
   );
@@ -103,9 +158,14 @@ export default function Home() {
 
   const loadCharts = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
-      const data = await loadGroupedCharts();
+      const [data, coords] = await Promise.all([
+        loadGroupedCharts(),
+        readAirportCoords().catch(() => [] as AirportCoord[]),
+      ]);
       setGroupedCharts(data);
+      setAirportCoords(coords);
       const airportList = Object.keys(data).sort();
       setAirports(airportList);
 
@@ -115,6 +175,13 @@ export default function Home() {
       }
     } catch (error) {
       console.error("Error loading charts:", error);
+      setGroupedCharts({});
+      setAirportCoords([]);
+      setAirports([]);
+      setSelectedAirport("");
+      setSelectedCategory(null);
+      setSelectedChart(null);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -257,8 +324,226 @@ export default function Home() {
     // Reload charts after settings are saved
     setSelectedChart(null);
     setSelectedCategory(null);
+    for (const overlay of mapOverlayCacheRef.current.values()) {
+      revokeOverlayImage(overlay);
+    }
+    mapOverlayCacheRef.current.clear();
+    georefResultCacheRef.current.clear();
     loadCharts();
   };
+
+  const clearGeorefOverlay = useCallback(() => {
+    setGeorefOverlay(null);
+  }, []);
+
+  const cacheMapOverlay = useCallback(
+    (cacheKey: string, overlay: ChartOverlayData) => {
+      const cache = mapOverlayCacheRef.current;
+      const existingOverlay = cache.get(cacheKey);
+      if (existingOverlay && existingOverlay.imageUrl !== overlay.imageUrl) {
+        revokeOverlayImage(existingOverlay);
+      }
+
+      cache.delete(cacheKey);
+      cache.set(cacheKey, overlay);
+
+      while (cache.size > MAP_OVERLAY_CACHE_LIMIT) {
+        const oldestKey = cache.keys().next().value;
+        if (oldestKey === undefined) break;
+        const oldestOverlay = cache.get(oldestKey);
+        cache.delete(oldestKey);
+        if (oldestOverlay) {
+          revokeOverlayImage(oldestOverlay);
+        }
+      }
+    },
+    []
+  );
+
+  const getCachedGeorefResult = useCallback(
+    (
+      cacheKey: string,
+      chartId: string,
+      pdfFilePath: string,
+      waypointFilePath: string | undefined,
+      pageNumber: number
+    ) => {
+      const cache = georefResultCacheRef.current;
+      const cachedResult = touchMapEntry(cache, cacheKey);
+      if (cachedResult) return cachedResult;
+
+      const request = georeferenceChart(
+        chartId,
+        pdfFilePath,
+        waypointFilePath,
+        pageNumber
+      ).catch((error) => {
+        cache.delete(cacheKey);
+        throw error;
+      });
+
+      cache.set(cacheKey, request);
+
+      while (cache.size > GEOREF_RESULT_CACHE_LIMIT) {
+        const oldestKey = cache.keys().next().value;
+        if (oldestKey === undefined) break;
+        cache.delete(oldestKey);
+      }
+
+      return request;
+    },
+    []
+  );
+
+  const showGeorefError = useCallback(() => {
+    if (georefErrorTimeoutRef.current) {
+      clearTimeout(georefErrorTimeoutRef.current);
+    }
+
+    setGeorefError(t("pdf.georefFailed"));
+    georefErrorTimeoutRef.current = setTimeout(() => {
+      setGeorefError(null);
+      georefErrorTimeoutRef.current = null;
+    }, 4000);
+  }, [t]);
+
+  // Clear overlay when the user switches to a different chart
+  useEffect(() => {
+    georefRequestIdRef.current += 1;
+    setGeorefLoading(false);
+    clearGeorefOverlay();
+  }, [clearGeorefOverlay, selectedChart]);
+
+  useEffect(() => {
+    const mapOverlayCache = mapOverlayCacheRef.current;
+    const georefResultCache = georefResultCacheRef.current;
+
+    return () => {
+      clearGeorefOverlay();
+      for (const overlay of mapOverlayCache.values()) {
+        revokeOverlayImage(overlay);
+      }
+      mapOverlayCache.clear();
+      georefResultCache.clear();
+      if (georefErrorTimeoutRef.current) {
+        clearTimeout(georefErrorTimeoutRef.current);
+      }
+    };
+  }, [clearGeorefOverlay]);
+
+  const handleShowOnMap = useCallback(
+    async (pageNumber: number) => {
+      if (!selectedChart) return;
+      const requestId = georefRequestIdRef.current + 1;
+      georefRequestIdRef.current = requestId;
+      if (georefErrorTimeoutRef.current) {
+        clearTimeout(georefErrorTimeoutRef.current);
+        georefErrorTimeoutRef.current = null;
+      }
+      setGeorefLoading(true);
+      setIsGlobeOpen(true);
+      setGeorefError(null);
+      let imageUrl: string | null = null;
+      try {
+        const pdfFilePath = getPDFFileName(selectedChart);
+        // Find the 航路点坐标 (waypoint coordinate table) PDF for this airport.
+        // It lives in the OTHER category and its ChartName is exactly "航路点坐标".
+        const airportCharts = groupedCharts[selectedAirport] ?? {};
+        const allAirportCharts: ChartData[] = [];
+        for (const charts of Object.values(airportCharts)) {
+          if (charts) allAirportCharts.push(...charts);
+        }
+        const waypointChart = allAirportCharts.find(
+          (c) => c.ChartName === "航路点坐标"
+        );
+        const waypointFilePath = waypointChart
+          ? getPDFFileName(waypointChart)
+          : undefined;
+        const cacheKey = getMapOverlayCacheKey(
+          selectedChart.ChartId,
+          pdfFilePath,
+          waypointFilePath,
+          pageNumber
+        );
+        const cachedOverlay = touchMapEntry(
+          mapOverlayCacheRef.current,
+          cacheKey
+        );
+        if (cachedOverlay) {
+          setGeorefOverlay(cachedOverlay);
+          setGeorefLoading(false);
+          return;
+        }
+
+        const result = await getCachedGeorefResult(
+          cacheKey,
+          selectedChart.ChartId,
+          pdfFilePath,
+          waypointFilePath,
+          pageNumber
+        );
+        const pageResult = result.pages.find((p) => p.page === pageNumber);
+        if (requestId !== georefRequestIdRef.current) {
+          return;
+        }
+
+        if (!pageResult?.georeferenced || !pageResult.transform) {
+          showGeorefError();
+          return;
+        }
+        const corners = computePageCorners(
+          pageResult.transform,
+          pageResult.pageWidth,
+          pageResult.pageHeight
+        );
+
+        imageUrl = (await getPageImageRef.current?.(pageNumber)) ?? null;
+        if (requestId !== georefRequestIdRef.current) {
+          if (imageUrl?.startsWith("blob:")) {
+            URL.revokeObjectURL(imageUrl);
+          }
+          return;
+        }
+
+        if (!imageUrl) {
+          showGeorefError();
+          return;
+        }
+
+        const overlayImageUrl = imageUrl;
+        imageUrl = null;
+        const overlay: ChartOverlayData = {
+          chartId: selectedChart.ChartId,
+          pageNumber,
+          corners,
+          imageUrl: overlayImageUrl,
+        };
+        cacheMapOverlay(cacheKey, overlay);
+        setGeorefOverlay(overlay);
+      } catch (error) {
+        if (imageUrl?.startsWith("blob:")) {
+          URL.revokeObjectURL(imageUrl);
+        }
+        if (requestId !== georefRequestIdRef.current) {
+          return;
+        }
+        console.error("Georeferencing error:", error);
+        showGeorefError();
+      } finally {
+        if (requestId === georefRequestIdRef.current) {
+          setGeorefLoading(false);
+        }
+      }
+    },
+    [
+      cacheMapOverlay,
+      getCachedGeorefResult,
+      selectedChart,
+      selectedAirport,
+      groupedCharts,
+      showGeorefError,
+    ]
+  );
 
   const currentCharts =
     selectedAirport && selectedCategory
@@ -364,11 +649,18 @@ export default function Home() {
               onOpenSidebar={() => setIsSidebarOpen(true)}
               bookmarkedCharts={bookmarkedChartsForCurrentAirport}
               onNavigateToBookmark={handleNavigateToBookmark}
+              onShowOnMap={handleShowOnMap}
+              georefLoading={georefLoading}
+              getPageImageRef={getPageImageRef}
             />
           ) : (
             <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-500">
               <div className="text-center px-4">
-                <p className="text-lg">{t("home.noChartSelected")}</p>
+                <p className="text-lg">
+                  {loadError
+                    ? t("home.failedToLoadChartData")
+                    : t("home.noChartSelected")}
+                </p>
                 <p className="text-sm mt-2">
                   <span className="lg:hidden">{t("home.tapMenuToSelect")}</span>
                   <span className="hidden lg:inline">
@@ -404,11 +696,25 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Georef error toast */}
+      {georefError && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-red-600 text-white text-sm rounded-lg shadow-lg pointer-events-none">
+          {georefError}
+        </div>
+      )}
+
       {/* 3D Globe Viewer */}
       {isGlobeOpen && (
         <GlobeViewer
-          onClose={() => setIsGlobeOpen(false)}
+          onClose={() => {
+            georefRequestIdRef.current += 1;
+            setGeorefLoading(false);
+            setIsGlobeOpen(false);
+            clearGeorefOverlay();
+          }}
           targetAirport={selectedAirport}
+          chartOverlay={georefOverlay}
+          airportCoords={airportCoords}
         />
       )}
 

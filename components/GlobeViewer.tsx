@@ -1,30 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Home, Layers, Minus, Plus, X } from "lucide-react";
+import { Home, Layers, Minus, Plus, SlidersHorizontal, X } from "lucide-react";
+import type { ChartCorners } from "@/types/georef";
+import type { AirportCoord } from "@/lib/tauriClient";
+
+export interface ChartOverlayData {
+  chartId: string;
+  pageNumber: number;
+  corners: ChartCorners;
+  imageUrl: string;
+}
 
 interface GlobeViewerProps {
   onClose: () => void;
   targetAirport?: string;
+  chartOverlay?: ChartOverlayData | null;
+  airportCoords?: AirportCoord[];
 }
-
-const AIRPORT_COORDS: Record<string, [number, number]> = {
-  ZBAA: [116.6, 40.08],
-  ZGSZ: [113.82, 22.64],
-  ZSSS: [121.34, 31.2],
-  ZGGG: [113.3, 23.39],
-  ZUUU: [103.95, 30.58],
-  ZPPP: [102.93, 25.1],
-  ZUCK: [106.64, 29.72],
-  ZLXY: [108.75, 34.45],
-  ZHHH: [114.21, 30.78],
-  ZGHA: [113.22, 28.19],
-  ZSAM: [118.13, 24.54],
-  ZJHK: [110.46, 19.93],
-  ZLIC: [87.47, 43.91],
-  ZLLL: [103.63, 36.52],
-  ZWWW: [87.47, 43.91],
-};
 
 function formatAltitude(meters: number): string {
   if (meters >= 1_000_000) return `${(meters / 1_000_000).toFixed(1)} Mm`;
@@ -79,6 +72,16 @@ const WHEEL_PAN_SENSITIVITY = 0.0012;
 const MIN_CAMERA_HEIGHT_METERS = 250;
 const MAX_CAMERA_HEIGHT_METERS = 25_000_000;
 const AIRPORT_HOME_HEIGHT_METERS = 20_000;
+const MAX_GLOBE_DEVICE_PIXEL_RATIO = 2;
+const DEFAULT_CHART_OVERLAY_ALPHA = 0.95;
+const GLOBE_MAX_SCREEN_SPACE_ERROR = 2.5;
+const GLOBE_TILE_CACHE_SIZE = 64;
+const CAMERA_STATUS_UPDATE_MS = 120;
+const CURSOR_STATUS_UPDATE_MS = 80;
+const ALTITUDE_UPDATE_RATIO = 0.01;
+const HEADING_UPDATE_DEGREES = 0.5;
+const CURSOR_UPDATE_DEGREES = 0.00005;
+const CHART_OVERLAY_HEIGHT_METERS = 25;
 
 interface ClientPoint {
   clientX: number;
@@ -101,8 +104,13 @@ function clampCameraHeight(height: number) {
   return clamp(height, MIN_CAMERA_HEIGHT_METERS, MAX_CAMERA_HEIGHT_METERS);
 }
 
-function getAirportCoords(targetAirport?: string) {
-  return targetAirport ? (AIRPORT_COORDS[targetAirport] ?? null) : null;
+function getAirportCoords(
+  targetAirport?: string,
+  airportCoords?: AirportCoord[]
+): [number, number] | null {
+  if (!targetAirport || !airportCoords) return null;
+  const found = airportCoords.find((a) => a.icao === targetAirport);
+  return found ? [found.lon, found.lat] : null;
 }
 
 function flyToAirportHome(
@@ -154,6 +162,146 @@ function flyToDefaultHome(
       pitch: Cesium.Math.toRadians(-90),
       roll: 0,
     },
+    duration,
+  });
+}
+
+function getChartOverlayRectangle(
+  Cesium: typeof import("cesium"),
+  chartOverlay: ChartOverlayData
+) {
+  const { corners } = chartOverlay;
+  return Cesium.Rectangle.fromDegrees(
+    corners.west,
+    corners.south,
+    corners.east,
+    corners.north
+  );
+}
+
+function getChartOverlayKey(chartOverlay: ChartOverlayData) {
+  const { corners, imageUrl } = chartOverlay;
+  return [
+    imageUrl,
+    corners.topLeft.lon,
+    corners.topLeft.lat,
+    corners.topRight.lon,
+    corners.topRight.lat,
+    corners.bottomRight.lon,
+    corners.bottomRight.lat,
+    corners.bottomLeft.lon,
+    corners.bottomLeft.lat,
+  ].join("|");
+}
+
+function getChartOverlayPositions(
+  Cesium: typeof import("cesium"),
+  corners: ChartCorners
+) {
+  return [
+    corners.topLeft,
+    corners.topRight,
+    corners.bottomRight,
+    corners.bottomLeft,
+  ].map((corner) =>
+    Cesium.Cartesian3.fromDegrees(
+      corner.lon,
+      corner.lat,
+      CHART_OVERLAY_HEIGHT_METERS
+    )
+  );
+}
+
+function getChartOverlayTextureCoordinates(Cesium: typeof import("cesium")) {
+  return new Cesium.PolygonHierarchy([
+    new Cesium.Cartesian2(0, 1),
+    new Cesium.Cartesian2(1, 1),
+    new Cesium.Cartesian2(1, 0),
+    new Cesium.Cartesian2(0, 0),
+  ] as unknown as import("cesium").Cartesian3[]);
+}
+
+function createChartOverlayMaterial(
+  Cesium: typeof import("cesium"),
+  imageUrl: string,
+  alpha: number
+) {
+  return new Cesium.Material({
+    translucent: true,
+    minificationFilter: Cesium.TextureMinificationFilter.LINEAR,
+    magnificationFilter: Cesium.TextureMagnificationFilter.LINEAR,
+    fabric: {
+      type: Cesium.Material.ImageType,
+      uniforms: {
+        image: imageUrl,
+        repeat: new Cesium.Cartesian2(1, 1),
+        color: Cesium.Color.WHITE.withAlpha(alpha),
+      },
+    },
+  });
+}
+
+function createChartOverlayPrimitive(
+  Cesium: typeof import("cesium"),
+  chartOverlay: ChartOverlayData,
+  alpha: number
+) {
+  const positions = getChartOverlayPositions(Cesium, chartOverlay.corners);
+  const geometry = new Cesium.PolygonGeometry({
+    polygonHierarchy: new Cesium.PolygonHierarchy(positions),
+    textureCoordinates: getChartOverlayTextureCoordinates(Cesium),
+    vertexFormat: Cesium.EllipsoidSurfaceAppearance.VERTEX_FORMAT,
+    perPositionHeight: true,
+    arcType: Cesium.ArcType.RHUMB,
+  });
+
+  return new Cesium.Primitive({
+    geometryInstances: new Cesium.GeometryInstance({ geometry }),
+    appearance: new Cesium.EllipsoidSurfaceAppearance({
+      aboveGround: true,
+      flat: true,
+      translucent: true,
+      material: createChartOverlayMaterial(
+        Cesium,
+        chartOverlay.imageUrl,
+        alpha
+      ),
+    }),
+    asynchronous: false,
+  });
+}
+
+function setChartOverlayPrimitiveAlpha(
+  Cesium: typeof import("cesium"),
+  primitive: unknown,
+  alpha: number
+) {
+  const material = (
+    primitive as {
+      appearance?: {
+        material?: { uniforms?: { color?: import("cesium").Color } };
+      };
+    }
+  ).appearance?.material;
+  if (!material?.uniforms) return;
+  material.uniforms.color = Cesium.Color.WHITE.withAlpha(alpha);
+}
+
+function flyToChartOverlay(
+  viewer: {
+    camera: {
+      flyTo: (options: {
+        destination: import("cesium").Rectangle;
+        duration?: number;
+      }) => void;
+    };
+  },
+  Cesium: typeof import("cesium"),
+  chartOverlay: ChartOverlayData,
+  duration = 0.8
+) {
+  viewer.camera.flyTo({
+    destination: getChartOverlayRectangle(Cesium, chartOverlay),
     duration,
   });
 }
@@ -262,11 +410,21 @@ function panGlobeByWheel(viewer: GlobeViewerInstance, event: WheelEvent) {
 export default function GlobeViewer({
   onClose,
   targetAirport,
+  chartOverlay,
+  airportCoords,
 }: GlobeViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Store the full Cesium Viewer type at runtime but keep TS happy with unknown
   const viewerRef = useRef<unknown>(null);
   const cesiumRef = useRef<typeof import("cesium") | null>(null);
+  const baseLayerRef = useRef<unknown>(null);
+  const overlayLayerRef = useRef<unknown>(null);
+  const activeOverlayImageUrlRef = useRef<string | null>(null);
+  const chartOverlayAlphaRef = useRef(DEFAULT_CHART_OVERLAY_ALPHA);
+  const altitudeRef = useRef<number | null>(null);
+  const headingRef = useRef(0);
+  const cursorCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
+  const tilesLoadingRef = useRef(false);
 
   const [altitude, setAltitude] = useState<number | null>(null);
   const [heading, setHeading] = useState(0); // degrees, for compass needle
@@ -277,6 +435,10 @@ export default function GlobeViewer({
   const [tilesLoading, setTilesLoading] = useState(false);
   const [activeLayer, setActiveLayer] = useState("osm");
   const [showLayerPicker, setShowLayerPicker] = useState(false);
+  const [chartOverlayAlpha, setChartOverlayAlpha] = useState(
+    DEFAULT_CHART_OVERLAY_ALPHA
+  );
+  const [viewerReadyKey, setViewerReadyKey] = useState(0);
 
   // Inject Cesium widget CSS once
   useEffect(() => {
@@ -299,6 +461,12 @@ export default function GlobeViewer({
     const el = containerRef.current;
     let lastGestureScale = 1;
     let lastClientPoint: ClientPoint | null = null;
+    let screenSpaceHandler: import("cesium").ScreenSpaceEventHandler | null =
+      null;
+    let removeTileLoadListener: (() => void) | null = null;
+    let removePostRenderListener: (() => void) | null = null;
+    let lastCameraStatusUpdate = 0;
+    let lastCursorStatusUpdate = 0;
 
     const getEventClientPoint = (event: Event): ClientPoint | null => {
       const pointer = event as Event & {
@@ -402,6 +570,8 @@ export default function GlobeViewer({
     el.addEventListener("gestureend", onGestureEnd, { capture: true });
 
     async function init() {
+      (window as typeof window & { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL =
+        "/cesium/";
       const Cesium = await import("cesium");
       if (destroyed || !containerRef.current) return;
 
@@ -412,9 +582,11 @@ export default function GlobeViewer({
         url: layer.url,
         credit: "© OpenStreetMap contributors",
       });
+      const baseLayer = new Cesium.ImageryLayer(osmProvider);
+      baseLayerRef.current = baseLayer;
 
       const viewer = new Cesium.Viewer(containerRef.current, {
-        baseLayer: new Cesium.ImageryLayer(osmProvider),
+        baseLayer,
         baseLayerPicker: false,
         geocoder: false,
         homeButton: false,
@@ -429,9 +601,23 @@ export default function GlobeViewer({
         selectionIndicator: false,
         shadows: false,
         terrainShadows: Cesium.ShadowMode.DISABLED,
+        orderIndependentTranslucency: false,
+        scene3DOnly: true,
+        requestRenderMode: true,
+        maximumRenderTimeChange: Number.POSITIVE_INFINITY,
+        msaaSamples: 1,
+        shouldAnimate: false,
+        useBrowserRecommendedResolution: false,
       });
 
       viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#0a0a14");
+      viewer.scene.postProcessStages.fxaa.enabled = false;
+      viewer.scene.globe.maximumScreenSpaceError = GLOBE_MAX_SCREEN_SPACE_ERROR;
+      viewer.scene.globe.tileCacheSize = GLOBE_TILE_CACHE_SIZE;
+      viewer.resolutionScale = Math.min(
+        window.devicePixelRatio || 1,
+        MAX_GLOBE_DEVICE_PIXEL_RATIO
+      );
 
       // Apple Maps-style input: pinch gesture = cursor-anchored zoom, scroll = pan.
       // Disable Cesium's built-in wheel/pinch zoom so it cannot center-zoom first.
@@ -444,41 +630,99 @@ export default function GlobeViewer({
       viewerRef.current = viewer;
 
       // Tile loading indicator
-      viewer.scene.globe.tileLoadProgressEvent.addEventListener(
-        (remaining: number) => {
-          setTilesLoading(remaining > 0);
+      removeTileLoadListener =
+        viewer.scene.globe.tileLoadProgressEvent.addEventListener(
+          (remaining: number) => {
+            const loading = remaining > 0;
+            if (tilesLoadingRef.current !== loading) {
+              tilesLoadingRef.current = loading;
+              setTilesLoading(loading);
+            }
+            viewer.scene.requestRender();
+          }
+        );
+
+      // Post-render status is deliberately throttled; updating React state on
+      // every Cesium frame dominates CPU while the camera is moving.
+      removePostRenderListener = viewer.scene.postRender.addEventListener(
+        () => {
+          const now = performance.now();
+          if (now - lastCameraStatusUpdate < CAMERA_STATUS_UPDATE_MS) {
+            return;
+          }
+          lastCameraStatusUpdate = now;
+
+          const cart = viewer.camera.positionCartographic;
+          if (!cart) return;
+
+          const nextAltitude = cart.height;
+          const previousAltitude = altitudeRef.current;
+          const altitudeChanged =
+            previousAltitude === null ||
+            Math.abs(nextAltitude - previousAltitude) >
+              Math.max(10, previousAltitude * ALTITUDE_UPDATE_RATIO);
+
+          if (altitudeChanged) {
+            altitudeRef.current = nextAltitude;
+            setAltitude(nextAltitude);
+          }
+
+          const nextHeading = Cesium.Math.toDegrees(viewer.camera.heading);
+          if (
+            Math.abs(nextHeading - headingRef.current) > HEADING_UPDATE_DEGREES
+          ) {
+            headingRef.current = nextHeading;
+            setHeading(nextHeading);
+          }
         }
       );
 
-      // Per-frame: update altitude, heading, cursor coords
-      viewer.scene.postRender.addEventListener(() => {
-        const cart = viewer.camera.positionCartographic;
-        if (cart) {
-          setAltitude(cart.height);
-          setHeading(Cesium.Math.toDegrees(viewer.camera.heading));
-        }
-      });
-
       // Mouse move → lat/lon under cursor
-      const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-      handler.setInputAction((movement: { endPosition: unknown }) => {
-        const ray = viewer.camera.getPickRay(
-          movement.endPosition as import("cesium").Cartesian2
-        );
-        if (!ray) return;
-        const pos = viewer.scene.globe.pick(ray, viewer.scene);
-        if (!pos) {
-          setCursorCoords(null);
-          return;
-        }
-        const carto = Cesium.Cartographic.fromCartesian(pos);
-        setCursorCoords({
-          lat: Cesium.Math.toDegrees(carto.latitude),
-          lon: Cesium.Math.toDegrees(carto.longitude),
-        });
-      }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+      screenSpaceHandler = new Cesium.ScreenSpaceEventHandler(
+        viewer.scene.canvas
+      );
+      screenSpaceHandler.setInputAction(
+        (movement: { endPosition: unknown }) => {
+          const now = performance.now();
+          if (now - lastCursorStatusUpdate < CURSOR_STATUS_UPDATE_MS) {
+            return;
+          }
+          lastCursorStatusUpdate = now;
 
-      const coords = getAirportCoords(targetAirport);
+          const ray = viewer.camera.getPickRay(
+            movement.endPosition as import("cesium").Cartesian2
+          );
+          if (!ray) return;
+          const pos = viewer.scene.globe.pick(ray, viewer.scene);
+          if (!pos) {
+            if (cursorCoordsRef.current) {
+              cursorCoordsRef.current = null;
+              setCursorCoords(null);
+            }
+            return;
+          }
+          const carto = Cesium.Cartographic.fromCartesian(pos);
+          const nextCoords = {
+            lat: Cesium.Math.toDegrees(carto.latitude),
+            lon: Cesium.Math.toDegrees(carto.longitude),
+          };
+          const previousCoords = cursorCoordsRef.current;
+          const coordsChanged =
+            !previousCoords ||
+            Math.abs(nextCoords.lat - previousCoords.lat) >
+              CURSOR_UPDATE_DEGREES ||
+            Math.abs(nextCoords.lon - previousCoords.lon) >
+              CURSOR_UPDATE_DEGREES;
+
+          if (coordsChanged) {
+            cursorCoordsRef.current = nextCoords;
+            setCursorCoords(nextCoords);
+          }
+        },
+        Cesium.ScreenSpaceEventType.MOUSE_MOVE
+      );
+
+      const coords = getAirportCoords(targetAirport, airportCoords);
       if (coords) {
         flyToAirportHome(viewer, Cesium, coords);
       } else {
@@ -486,6 +730,8 @@ export default function GlobeViewer({
       }
 
       viewerRef.current = viewer;
+      setViewerReadyKey((key) => key + 1);
+      viewer.scene.requestRender();
     }
 
     init().catch(console.error);
@@ -501,6 +747,11 @@ export default function GlobeViewer({
         capture: true,
       });
       el.removeEventListener("gestureend", onGestureEnd, { capture: true });
+      removeTileLoadListener?.();
+      removePostRenderListener?.();
+      if (screenSpaceHandler && !screenSpaceHandler.isDestroyed()) {
+        screenSpaceHandler.destroy();
+      }
       if (viewerRef.current) {
         try {
           (viewerRef.current as { destroy: () => void }).destroy();
@@ -508,10 +759,82 @@ export default function GlobeViewer({
           /* ignore */
         }
         viewerRef.current = null;
+        baseLayerRef.current = null;
+        overlayLayerRef.current = null;
+        activeOverlayImageUrlRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetAirport]);
+
+  // Render chart overlay whenever chartOverlay changes
+  useEffect(() => {
+    const Cesium = cesiumRef.current;
+    const rawViewer = viewerRef.current as {
+      camera: { flyTo: (opts: unknown) => void };
+      scene: {
+        primitives: {
+          add: (primitive: unknown) => unknown;
+          remove: (primitive: unknown) => boolean;
+        };
+        requestRender?: () => void;
+      };
+    } | null;
+
+    if (!chartOverlay || !rawViewer || !Cesium) {
+      if (overlayLayerRef.current && rawViewer) {
+        rawViewer.scene.primitives.remove(overlayLayerRef.current);
+        overlayLayerRef.current = null;
+        activeOverlayImageUrlRef.current = null;
+        rawViewer.scene.requestRender?.();
+      }
+      return;
+    }
+
+    const overlayKey = getChartOverlayKey(chartOverlay);
+    if (
+      overlayLayerRef.current &&
+      activeOverlayImageUrlRef.current === overlayKey
+    ) {
+      return;
+    }
+
+    const rectangle = getChartOverlayRectangle(Cesium, chartOverlay);
+
+    try {
+      const previousLayer = overlayLayerRef.current;
+      const primitive = createChartOverlayPrimitive(
+        Cesium,
+        chartOverlay,
+        chartOverlayAlphaRef.current
+      );
+      rawViewer.scene.primitives.add(primitive);
+      overlayLayerRef.current = primitive;
+      activeOverlayImageUrlRef.current = overlayKey;
+      if (previousLayer) {
+        rawViewer.scene.primitives.remove(previousLayer);
+      }
+      rawViewer.camera.flyTo({ destination: rectangle, duration: 0.75 });
+      rawViewer.scene.requestRender?.();
+    } catch (error) {
+      console.error("Failed to load chart overlay:", error);
+    }
+  }, [chartOverlay, viewerReadyKey]);
+
+  useEffect(() => {
+    chartOverlayAlphaRef.current = chartOverlayAlpha;
+
+    const Cesium = cesiumRef.current;
+    if (!overlayLayerRef.current || !Cesium) return;
+    setChartOverlayPrimitiveAlpha(
+      Cesium,
+      overlayLayerRef.current,
+      chartOverlayAlpha
+    );
+
+    const viewer = getGlobeViewer(viewerRef.current);
+    viewer?.scene?.requestRender?.();
+  }, [chartOverlayAlpha]);
 
   const zoom = useCallback((inOut: "in" | "out") => {
     const viewer = getGlobeViewer(viewerRef.current);
@@ -524,17 +847,25 @@ export default function GlobeViewer({
       camera: {
         flyTo: (opts: unknown) => void;
       };
+      scene: { requestRender?: () => void };
     } | null;
     const Cesium = cesiumRef.current;
     if (!viewer || !Cesium) return;
 
-    const coords = getAirportCoords(targetAirport);
+    if (chartOverlay) {
+      flyToChartOverlay(viewer, Cesium, chartOverlay);
+      viewer.scene.requestRender?.();
+      return;
+    }
+
+    const coords = getAirportCoords(targetAirport, airportCoords);
     if (coords) {
       flyToAirportHome(viewer, Cesium, coords);
     } else {
       flyToDefaultHome(viewer, Cesium);
     }
-  }, [targetAirport]);
+    viewer.scene.requestRender?.();
+  }, [airportCoords, chartOverlay, targetAirport]);
 
   const resetNorth = useCallback(() => {
     const viewer = viewerRef.current as {
@@ -548,6 +879,7 @@ export default function GlobeViewer({
         pitch: number;
         roll: number;
       };
+      scene: { requestRender?: () => void };
     } | null;
     const Cesium = cesiumRef.current;
     if (!viewer || !Cesium) return;
@@ -565,14 +897,16 @@ export default function GlobeViewer({
       },
       duration: 0.8,
     });
+    viewer.scene.requestRender?.();
   }, []);
 
   const switchLayer = useCallback((layerId: string) => {
     const viewer = viewerRef.current as {
       imageryLayers: {
-        removeAll: () => void;
-        addImageryProvider: (p: unknown) => void;
+        add: (layer: unknown, index?: number) => void;
+        remove: (layer: unknown, destroy?: boolean) => void;
       };
+      scene: { requestRender?: () => void };
     } | null;
     const Cesium = cesiumRef.current;
     if (!viewer || !Cesium) return;
@@ -580,15 +914,22 @@ export default function GlobeViewer({
     const layer = LAYERS.find((l) => l.id === layerId);
     if (!layer) return;
 
-    viewer.imageryLayers.removeAll();
-    viewer.imageryLayers.addImageryProvider(
+    if (baseLayerRef.current) {
+      viewer.imageryLayers.remove(baseLayerRef.current, true);
+      baseLayerRef.current = null;
+    }
+
+    const nextBaseLayer = new Cesium.ImageryLayer(
       new Cesium.OpenStreetMapImageryProvider({
         url: layer.url,
         credit: "© OpenStreetMap contributors",
       })
     );
+    viewer.imageryLayers.add(nextBaseLayer, 0);
+    baseLayerRef.current = nextBaseLayer;
     setActiveLayer(layerId);
     setShowLayerPicker(false);
+    viewer.scene.requestRender?.();
   }, []);
 
   return (
@@ -603,6 +944,7 @@ export default function GlobeViewer({
           onClick={onClose}
           className="p-2 bg-black/60 hover:bg-black/80 text-white rounded-full transition-colors"
           title="Close globe"
+          aria-label="Close globe"
         >
           <X className="w-5 h-5" />
         </button>
@@ -620,6 +962,7 @@ export default function GlobeViewer({
       <button
         onClick={resetNorth}
         title="Reset north"
+        aria-label="Reset north"
         className="absolute top-4 left-4 z-40 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center transition-colors"
       >
         <svg
@@ -662,16 +1005,40 @@ export default function GlobeViewer({
             onClick={() => setShowLayerPicker((v) => !v)}
             className="w-9 h-9 bg-black/60 hover:bg-black/80 text-white rounded-lg flex items-center justify-center transition-colors"
             title="Switch map layer"
+            aria-label="Switch map layer"
           >
             <Layers className="w-4 h-4" />
           </button>
         </div>
+
+        {chartOverlay && (
+          <div className="flex items-center gap-2 px-2 py-1.5 bg-black/60 text-white rounded-lg border border-white/10">
+            <SlidersHorizontal className="w-4 h-4 text-white/80" />
+            <input
+              type="range"
+              min={10}
+              max={100}
+              step={5}
+              value={Math.round(chartOverlayAlpha * 100)}
+              onChange={(event) =>
+                setChartOverlayAlpha(Number(event.target.value) / 100)
+              }
+              className="w-24 accent-blue-400"
+              aria-label="Chart opacity"
+              title="Chart opacity"
+            />
+            <span className="w-8 text-right text-[10px] tabular-nums text-white/80">
+              {Math.round(chartOverlayAlpha * 100)}%
+            </span>
+          </div>
+        )}
 
         {/* Home */}
         <button
           onClick={flyHome}
           className="w-9 h-9 bg-black/60 hover:bg-black/80 text-white rounded-lg flex items-center justify-center transition-colors"
           title="Fly home"
+          aria-label="Fly home"
         >
           <Home className="w-4 h-4" />
         </button>
@@ -681,6 +1048,7 @@ export default function GlobeViewer({
           onClick={() => zoom("in")}
           className="w-9 h-9 bg-black/60 hover:bg-black/80 text-white rounded-t-lg flex items-center justify-center transition-colors border-b border-white/10"
           title="Zoom in"
+          aria-label="Zoom in"
         >
           <Plus className="w-4 h-4" />
         </button>
@@ -690,6 +1058,7 @@ export default function GlobeViewer({
           onClick={() => zoom("out")}
           className="w-9 h-9 bg-black/60 hover:bg-black/80 text-white rounded-b-lg flex items-center justify-center transition-colors"
           title="Zoom out"
+          aria-label="Zoom out"
         >
           <Minus className="w-4 h-4" />
         </button>

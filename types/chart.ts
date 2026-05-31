@@ -74,6 +74,11 @@ export function getChartCategory(chartType: string): ChartCategory | null {
   return CHART_TYPE_MAPPING[chartType as KnownChartType] ?? null;
 }
 
+export function isGeoreferenceable(chart: ChartData): boolean {
+  const cat = getChartCategory(chart.ChartTypeEx_CH);
+  return cat === "SID" || cat === "STAR" || cat === "APP";
+}
+
 export const CATEGORY_ORDER: ChartCategory[] = [
   "STAR",
   "APP",

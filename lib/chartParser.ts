@@ -40,11 +40,66 @@ function toYesNo(value: unknown): "Y" | "N" {
   return normalized === "TRUE" || normalized === "Y" ? "Y" : "N";
 }
 
+function normalizeAirportIcao(value: unknown): string {
+  return fieldValue(value).toUpperCase();
+}
+
+function chartIdFor(
+  airportIcao: string,
+  chartKey: string,
+  isSupplement: "Y" | "N",
+  fallbackId?: string
+): string {
+  const normalizedFallbackId = fieldValue(fallbackId);
+  if (normalizedFallbackId) {
+    return isSupplement === SUPPLEMENT_FLAG &&
+      !normalizedFallbackId.endsWith("-SUP")
+      ? `${normalizedFallbackId}-SUP`
+      : normalizedFallbackId;
+  }
+
+  return `${airportIcao}-${chartKey}${isSupplement === SUPPLEMENT_FLAG ? "-SUP" : ""}`;
+}
+
+function normalizeChartData(row: ChartData): ChartData {
+  const airportIcao = normalizeAirportIcao(row.AirportIcao);
+  const chartName = fieldValue(row.ChartName);
+  const pageNumber = fieldValue(row.PAGE_NUMBER);
+  const isSupplement = toYesNo(row.IS_SUP);
+
+  return {
+    ChartId: chartIdFor(
+      airportIcao,
+      pageNumber || chartName,
+      isSupplement,
+      row.ChartId
+    ),
+    AirportIcao: airportIcao,
+    AirportIata: fieldValue(row.AirportIata),
+    CityName: fieldValue(row.CityName),
+    AirportName: fieldValue(row.AirportName),
+    ValidFrom: fieldValue(row.ValidFrom),
+    ValidUntil: fieldValue(row.ValidUntil),
+    FilePath: fieldValue(row.FilePath),
+    ChartName: chartName,
+    FileSize: fieldValue(row.FileSize),
+    ChartTypeEx_CH: fieldValue(row.ChartTypeEx_CH),
+    MD5: fieldValue(row.MD5),
+    AD_HP_ID: fieldValue(row.AD_HP_ID),
+    PAGE_NUMBER: pageNumber,
+    IS_SUP: isSupplement,
+    SUP_REF_CHARTID: fieldValue(row.SUP_REF_CHARTID),
+    IS_MODIFIED: toYesNo(row.IS_MODIFIED),
+  };
+}
+
 export function parseCSV(csvContent: string): ChartData[] {
-  return parseRows<ChartData>(csvContent).filter(
-    (row) =>
-      fieldValue(row.AirportIcao).length > 0 && hasChartFileReference(row)
-  );
+  return parseRows<ChartData>(csvContent)
+    .filter(
+      (row) =>
+        fieldValue(row.AirportIcao).length > 0 && hasChartFileReference(row)
+    )
+    .map(normalizeChartData);
 }
 
 export function parsePerAirportCSV(
@@ -62,9 +117,10 @@ export function parsePerAirportCSV(
       const chartName = fieldValue(row.ChartName);
       const pageNumber = fieldValue(row.PAGE_NUMBER);
       const chartKey = pageNumber || chartName;
+      const isSupplement = toYesNo(row.IS_SUP);
 
       return {
-        ChartId: `${normalizedAirportIcao}-${chartKey}`,
+        ChartId: chartIdFor(normalizedAirportIcao, chartKey, isSupplement),
         AirportIcao: normalizedAirportIcao,
         AirportIata: "",
         CityName: "",
@@ -78,7 +134,7 @@ export function parsePerAirportCSV(
         MD5: "",
         AD_HP_ID: "",
         PAGE_NUMBER: pageNumber,
-        IS_SUP: toYesNo(row.IS_SUP),
+        IS_SUP: isSupplement,
         SUP_REF_CHARTID: "",
         IS_MODIFIED: toYesNo(row.IsModify),
       };
@@ -131,13 +187,15 @@ export function getAirportList(groupedCharts: GroupedCharts): string[] {
 }
 
 export function getPDFFileName(chart: ChartData): string {
+  const airportIcao = normalizeAirportIcao(chart.AirportIcao);
+
   if (chart.ChartTypeEx_CH === AIRPORT_DETAIL_TYPE) {
     const safeName = chart.ChartName.replace(/\//g, "_").trim();
-    return `${safeName}.pdf`;
+    return airportIcao ? `${airportIcao}/${safeName}.pdf` : `${safeName}.pdf`;
   }
 
   const pageNumber = chart.PAGE_NUMBER.trim().replace(/\//g, "");
   const supSuffix = chart.IS_SUP === SUPPLEMENT_FLAG ? "(SUP)" : "";
 
-  return `${chart.AirportIcao}-${pageNumber}${supSuffix}.pdf`;
+  return `${airportIcao}-${pageNumber}${supSuffix}.pdf`;
 }

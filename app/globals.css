@@ -77,6 +77,7 @@ body {
 /* PDF rendering quality improvements */
 .pdf-viewer-scroll {
   overflow-anchor: none;
+  contain: strict;
 }
 
 .pdf-canvas {
@@ -85,6 +86,7 @@ body {
   image-rendering: auto;
   backface-visibility: hidden;
   overflow-anchor: none;
+  contain: paint;
 }
 
 /* Auto-hide scrollbar - only show when scrolling */
@@ -134,6 +136,7 @@ body {
 .cesium-widget canvas {
   width: 100% !important;
   height: 100% !important;
+  contain: strict;
 }
 
 /* Hide Cesium's default credit container (we provide our own credit string) */

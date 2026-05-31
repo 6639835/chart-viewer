@@ -8,12 +8,9 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
 
-  // Turbopack (next dev) — define CESIUM_BASE_URL at compile time
-  turbopack: {
-    define: {
-      CESIUM_BASE_URL: JSON.stringify("/cesium/"),
-    },
-  },
+  // Explicitly opt into Turbopack defaults for `next dev`; Cesium's base URL is
+  // set at runtime before dynamic import in GlobeViewer.
+  turbopack: {},
 
   // Webpack (next build / --webpack) — same define via DefinePlugin
   webpack: (config) => {

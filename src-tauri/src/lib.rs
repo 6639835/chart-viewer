@@ -5,13 +5,22 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Output, Stdio};
 use std::sync::Mutex;
+use std::thread;
+use std::time::{Duration, Instant};
 use tauri::{
     http::{Request, Response},
     AppHandle, Manager,
 };
 
 const CONFIG_FILE: &str = "config.json";
+const CORS_EXPOSE_HEADERS: &str = "Accept-Ranges, Content-Encoding, Content-Length, Content-Range";
+const GEOREF_SIDECAR_NAME: &str = "georef-sidecar";
+const MAX_FULL_PDF_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_PDF_RANGE_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
+const GEOREF_TIMEOUT: Duration = Duration::from_secs(90);
+const MAX_GEOREF_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Default)]
 struct PdfPathCache {
@@ -48,11 +57,37 @@ struct ChartSourcesResponse {
     sources: Vec<ChartSource>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GeorefPageResult {
+    page: u32,
+    georeferenced: bool,
+    transform: Option<[f64; 6]>,
+    #[serde(alias = "page_width")]
+    page_width: f64,
+    #[serde(alias = "page_height")]
+    page_height: f64,
+    #[serde(alias = "rmse_meters")]
+    rmse_meters: Option<f64>,
+    #[serde(alias = "control_point_count")]
+    control_point_count: u32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GeorefResult {
+    chart_id: String,
+    pages: Vec<GeorefPageResult>,
+}
+
 fn response(status: u16, content_type: &str, body: Vec<u8>) -> Response<Vec<u8>> {
     Response::builder()
         .status(status)
         .header("Content-Type", content_type)
         .header("Access-Control-Allow-Origin", "*")
+        .header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        .header("Access-Control-Allow-Headers", "Range")
+        .header("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS)
         .body(body)
         .unwrap_or_else(|_| Response::builder().status(500).body(Vec::new()).unwrap())
 }
@@ -67,8 +102,12 @@ fn pdf_response(
         .status(status)
         .header("Content-Type", "application/pdf")
         .header("Accept-Ranges", "bytes")
+        .header("Content-Encoding", "identity")
         .header("Content-Length", content_length.to_string())
-        .header("Access-Control-Allow-Origin", "*");
+        .header("Access-Control-Allow-Origin", "*")
+        .header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        .header("Access-Control-Allow-Headers", "Range")
+        .header("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS);
 
     if let Some(content_range) = content_range {
         builder = builder.header("Content-Range", content_range);
@@ -406,23 +445,44 @@ fn serve_pdf_file(pdf_path: &Path, range_header: Option<&str>) -> Response<Vec<u
     let file_len = metadata.len();
 
     match parse_range_header(range_header, file_len) {
-        RangeRequest::Full => match fs::read(pdf_path) {
-            Ok(bytes) => pdf_response(200, bytes, None, file_len),
-            Err(_) => response(
-                500,
-                "text/plain; charset=utf-8",
-                b"Failed to load PDF".to_vec(),
-            ),
-        },
+        RangeRequest::Full => {
+            if file_len > MAX_FULL_PDF_RESPONSE_BYTES {
+                return response(
+                    413,
+                    "text/plain; charset=utf-8",
+                    b"PDF is too large for a full response; retry with byte ranges".to_vec(),
+                );
+            }
+
+            match fs::read(pdf_path) {
+                Ok(bytes) => pdf_response(200, bytes, None, file_len),
+                Err(_) => response(
+                    500,
+                    "text/plain; charset=utf-8",
+                    b"Failed to load PDF".to_vec(),
+                ),
+            }
+        }
         RangeRequest::Unsatisfiable => Response::builder()
             .status(416)
             .header("Content-Range", format!("bytes */{file_len}"))
             .header("Accept-Ranges", "bytes")
             .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            .header("Access-Control-Allow-Headers", "Range")
+            .header("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS)
             .body(Vec::new())
             .unwrap_or_else(|_| Response::builder().status(500).body(Vec::new()).unwrap()),
         RangeRequest::Partial { start, end } => {
             let byte_count = end - start + 1;
+            if byte_count > MAX_PDF_RANGE_RESPONSE_BYTES {
+                return response(
+                    413,
+                    "text/plain; charset=utf-8",
+                    b"Requested PDF range is too large".to_vec(),
+                );
+            }
+
             let Ok(byte_count_usize) = usize::try_from(byte_count) else {
                 return response(
                     416,
@@ -454,7 +514,91 @@ fn serve_pdf_file(pdf_path: &Path, range_header: Option<&str>) -> Response<Vec<u
     }
 }
 
+fn read_limited_output<R: Read>(mut reader: R, limit: usize) -> Vec<u8> {
+    let mut output = Vec::new();
+    let mut buffer = [0_u8; 8192];
+
+    loop {
+        let Ok(read) = reader.read(&mut buffer) else {
+            break;
+        };
+        if read == 0 {
+            break;
+        }
+
+        let remaining = limit.saturating_sub(output.len());
+        if remaining > 0 {
+            output.extend_from_slice(&buffer[..read.min(remaining)]);
+        }
+    }
+
+    output
+}
+
+fn join_output(handle: thread::JoinHandle<Vec<u8>>) -> Vec<u8> {
+    handle.join().unwrap_or_default()
+}
+
+fn run_georef_command_with_limits(cmd: &mut Command) -> Result<Output, String> {
+    let mut child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("Failed to run georef runtime: {error}"))?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture georef stdout".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "Failed to capture georef stderr".to_string())?;
+    let stdout_thread = thread::spawn(move || read_limited_output(stdout, MAX_GEOREF_OUTPUT_BYTES));
+    let stderr_thread = thread::spawn(move || read_limited_output(stderr, MAX_GEOREF_OUTPUT_BYTES));
+    let deadline = Instant::now() + GEOREF_TIMEOUT;
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return Ok(Output {
+                    status,
+                    stdout: join_output(stdout_thread),
+                    stderr: join_output(stderr_thread),
+                });
+            }
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = join_output(stdout_thread);
+                let stderr = String::from_utf8_lossy(&join_output(stderr_thread)).to_string();
+                return Err(format!(
+                    "Georef runtime timed out after {} seconds{}",
+                    GEOREF_TIMEOUT.as_secs(),
+                    if stderr.is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {stderr}")
+                    }
+                ));
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(50)),
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = join_output(stdout_thread);
+                let _ = join_output(stderr_thread);
+                return Err(format!("Failed to wait for georef runtime: {error}"));
+            }
+        }
+    }
+}
+
 fn handle_pdf_request(app: &AppHandle, request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
+    if request.method().as_str() == "OPTIONS" {
+        return response(204, "text/plain; charset=utf-8", Vec::new());
+    }
+
     let encoded_filename = request.uri().path().trim_start_matches('/').trim();
     let Ok(filename) = percent_decode_str(encoded_filename).decode_utf8() else {
         return response(
@@ -539,6 +683,243 @@ fn read_chart_sources(app: AppHandle) -> ChartSourcesResponse {
     ChartSourcesResponse { sources }
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AirportCoord {
+    icao: String,
+    lat: f64,
+    lon: f64,
+}
+
+fn parse_dms_to_decimal(s: &str) -> Option<f64> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let mut chars = s.chars();
+    let hemi = chars.next()?;
+    let digits: String = chars.filter(|c| c.is_ascii_digit()).collect();
+    let (deg_digits, sign) = match hemi {
+        'N' | 'n' => (2usize, 1.0f64),
+        'S' | 's' => (2, -1.0),
+        'E' | 'e' => (3, 1.0),
+        'W' | 'w' => (3, -1.0),
+        _ => return None,
+    };
+    if digits.len() < deg_digits {
+        return None;
+    }
+    let deg: f64 = digits[..deg_digits].parse().ok()?;
+    let min: f64 = if digits.len() >= deg_digits + 2 {
+        digits[deg_digits..deg_digits + 2].parse().ok()?
+    } else {
+        0.0
+    };
+    let sec: f64 = if digits.len() >= deg_digits + 4 {
+        digits[deg_digits + 2..deg_digits + 4].parse().ok()?
+    } else {
+        0.0
+    };
+    Some(sign * (deg + min / 60.0 + sec / 3600.0))
+}
+
+fn load_airport_coords_from_csv(csv_dir: &Path) -> Vec<AirportCoord> {
+    for filename in &["AD_HP.csv", "airport.csv", "Airport.csv"] {
+        let path = csv_dir.join(filename);
+        let Ok(buffer) = fs::read(&path) else {
+            continue;
+        };
+        let content = decode_gbk(&buffer);
+        let mut lines = content.lines();
+        let header_line = match lines.next() {
+            Some(h) => h,
+            None => continue,
+        };
+        let headers: Vec<&str> = header_line.split(',').collect();
+        let find_col = |keywords: &[&str]| -> Option<usize> {
+            headers.iter().position(|h| {
+                let h = h.trim().to_lowercase();
+                keywords.iter().any(|kw| h.contains(kw))
+            })
+        };
+        let icao_col = find_col(&["code_id", "icao", "ident"]);
+        let lat_col = find_col(&["geo_lat", "lat_accuracy"]);
+        let lon_col = find_col(&["geo_lon", "geo_long", "lon_accuracy", "long_accuracy"]);
+        let (Some(icao_col), Some(lat_col), Some(lon_col)) = (icao_col, lat_col, lon_col) else {
+            continue;
+        };
+        let mut coords = Vec::new();
+        for line in lines {
+            let fields: Vec<&str> = line.split(',').collect();
+            let icao = fields.get(icao_col).unwrap_or(&"").trim().to_uppercase();
+            if icao.len() != 4 || !icao.chars().all(|c| c.is_ascii_alphanumeric()) {
+                continue;
+            }
+            let lat_raw = fields.get(lat_col).unwrap_or(&"").trim();
+            let lon_raw = fields.get(lon_col).unwrap_or(&"").trim();
+            let (Some(lat), Some(lon)) =
+                (parse_dms_to_decimal(lat_raw), parse_dms_to_decimal(lon_raw))
+            else {
+                continue;
+            };
+            coords.push(AirportCoord { icao, lat, lon });
+        }
+        if !coords.is_empty() {
+            return coords;
+        }
+    }
+    Vec::new()
+}
+
+#[tauri::command]
+fn read_airport_coords(app: AppHandle) -> Vec<AirportCoord> {
+    let config = read_config(&app);
+    let csv_dir = resolve_config_path(&config.csv_directory);
+    let mut coords = load_airport_coords_from_csv(&csv_dir);
+    if coords.is_empty() {
+        let charts_dir = resolve_config_path(&config.charts_directory);
+        coords = load_airport_coords_from_csv(&charts_dir);
+    }
+    coords
+}
+
+fn locate_georef_script(app: &AppHandle) -> Option<PathBuf> {
+    // Allow override via env var for development convenience.
+    if cfg!(debug_assertions) {
+        if let Ok(env_path) = std::env::var("GEOREF_SCRIPT_PATH") {
+            let p = PathBuf::from(env_path);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+
+    // Bundled resource path. Tauri may preserve the configured relative path.
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        for p in [
+            resource_dir.join("georef_script.py"),
+            resource_dir.join("resources").join("georef_script.py"),
+        ] {
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+
+    // Development fallbacks for `tauri dev`, regardless of whether the process
+    // starts from the repository root or the Rust crate directory.
+    for p in [
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("georef_script.py"),
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("src-tauri")
+            .join("resources")
+            .join("georef_script.py"),
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("resources")
+            .join("georef_script.py"),
+    ] {
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+
+    None
+}
+
+fn georef_sidecar_file_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "georef-sidecar.exe"
+    } else {
+        GEOREF_SIDECAR_NAME
+    }
+}
+
+fn locate_georef_sidecar() -> Option<PathBuf> {
+    if cfg!(debug_assertions) {
+        if let Ok(env_path) = std::env::var("GEOREF_SIDECAR_PATH") {
+            let p = PathBuf::from(env_path);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+
+    let exe_path = std::env::current_exe().ok()?;
+    let exe_dir = exe_path.parent()?;
+    let p = exe_dir.join(georef_sidecar_file_name());
+    if p.is_file() {
+        Some(p)
+    } else {
+        None
+    }
+}
+
+#[tauri::command]
+fn georeference_chart(
+    app: AppHandle,
+    chart_id: String,
+    file_path: String,
+    waypoint_file_path: Option<String>,
+    page_number: Option<u32>,
+) -> Result<GeorefResult, String> {
+    let config = read_config(&app);
+    let charts_dir = resolve_config_path(&config.charts_directory);
+    let csv_dir = resolve_config_path(&config.csv_directory);
+
+    let pdf_path = find_pdf_path(&charts_dir, &file_path)
+        .ok_or_else(|| format!("PDF not found: {file_path}"))?;
+
+    let mut cmd = if let Some(sidecar_path) = locate_georef_sidecar() {
+        Command::new(sidecar_path)
+    } else if !cfg!(debug_assertions) {
+        return Err("georef sidecar not found in bundled application".to_string());
+    } else {
+        let script_path = locate_georef_script(&app).ok_or_else(|| {
+            "georef runtime not found - bundle the sidecar or set GEOREF_SCRIPT_PATH in development"
+                .to_string()
+        })?;
+        let python = std::env::var("GEOREF_PYTHON").unwrap_or_else(|_| "python3".to_string());
+        let mut cmd = Command::new(python);
+        cmd.arg(script_path);
+        cmd
+    };
+
+    cmd.arg("--pdf")
+        .arg(&pdf_path)
+        .arg("--csv-dir")
+        .arg(&csv_dir);
+
+    // Resolve and pass the 航路点坐标 waypoint PDF if provided
+    if let Some(ref wp_file) = waypoint_file_path {
+        if let Some(wp_path) = find_pdf_path(&charts_dir, wp_file) {
+            cmd.arg("--waypoint-pdf").arg(&wp_path);
+        }
+    }
+
+    if let Some(page_number) = page_number {
+        cmd.arg("--page").arg(page_number.to_string());
+    }
+
+    cmd.env("PYTHONDONTWRITEBYTECODE", "1");
+
+    let output = run_georef_command_with_limits(&mut cmd)?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Georef runtime error: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let pages: Vec<GeorefPageResult> =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse georef output: {e}"))?;
+
+    Ok(GeorefResult { chart_id, pages })
+}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(PdfPathCache::default())
@@ -552,8 +933,62 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
-            read_chart_sources
+            read_chart_sources,
+            read_airport_coords,
+            georeference_chart
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_byte_ranges() {
+        match parse_range_header(Some("bytes=10-19"), 100) {
+            RangeRequest::Partial { start, end } => {
+                assert_eq!(start, 10);
+                assert_eq!(end, 19);
+            }
+            other => panic!("unexpected range result: {other:?}"),
+        }
+
+        match parse_range_header(Some("bytes=-10"), 100) {
+            RangeRequest::Partial { start, end } => {
+                assert_eq!(start, 90);
+                assert_eq!(end, 99);
+            }
+            other => panic!("unexpected suffix range result: {other:?}"),
+        }
+
+        assert!(matches!(
+            parse_range_header(Some("bytes=100-200"), 100),
+            RangeRequest::Unsatisfiable
+        ));
+    }
+
+    #[test]
+    fn parses_dms_without_multibyte_panics() {
+        assert!(parse_dms_to_decimal("东1160000").is_none());
+        assert_eq!(parse_dms_to_decimal("N400000"), Some(40.0));
+        assert_eq!(parse_dms_to_decimal("W1163000"), Some(-116.5));
+    }
+
+    #[test]
+    fn rejects_paths_outside_base() {
+        let base = std::env::temp_dir().join(format!("chart-viewer-test-{}", std::process::id()));
+        let nested = base.join("charts");
+        fs::create_dir_all(&nested).expect("create test directory");
+        fs::write(nested.join("chart.pdf"), b"%PDF").expect("create test pdf");
+
+        let inside = existing_safe_path(&base, Path::new("charts/chart.pdf"));
+        assert!(inside.is_some());
+
+        let outside = existing_safe_path(&base, Path::new("../chart.pdf"));
+        assert!(outside.is_none());
+
+        let _ = fs::remove_dir_all(base);
+    }
 }

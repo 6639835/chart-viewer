@@ -43,6 +43,7 @@ export type TranslationKey =
   | "theme.toggle"
   | "home.loadingChartData"
   | "home.loadingPdfViewer"
+  | "home.failedToLoadChartData"
   | "home.noChartSelected"
   | "home.openMenu"
   | "home.selectCategoryAndChart"
@@ -69,6 +70,9 @@ export type TranslationKey =
   | "pdf.previousBookmark"
   | "pdf.renderingPdf"
   | "pdf.rotateClockwise"
+  | "pdf.showOnMap"
+  | "pdf.georefFailed"
+  | "pdf.georefLoading"
   | "pdf.zoomIn"
   | "pdf.zoomOut"
   | "update.available"
@@ -137,6 +141,8 @@ export const translations: Record<Locale, Translations> = {
     "theme.toggle": "Toggle theme",
     "home.loadingChartData": "Loading Chart Data...",
     "home.loadingPdfViewer": "Loading PDF viewer...",
+    "home.failedToLoadChartData":
+      "Failed to load chart data. Check your chart and CSV directories in settings.",
     "home.noChartSelected": "No chart selected",
     "home.openMenu": "Open Menu",
     "home.selectCategoryAndChart": "Select a category and chart to view",
@@ -163,6 +169,9 @@ export const translations: Record<Locale, Translations> = {
     "pdf.previousBookmark": "Previous Bookmark",
     "pdf.renderingPdf": "Rendering PDF...",
     "pdf.rotateClockwise": "Rotate 90°",
+    "pdf.showOnMap": "Show on Map",
+    "pdf.georefFailed": "Could not georeference: not enough waypoints found.",
+    "pdf.georefLoading": "Georeferencing...",
     "pdf.zoomIn": "Zoom In",
     "pdf.zoomOut": "Zoom Out",
     "update.available": "New Update Available",
@@ -217,6 +226,8 @@ export const translations: Record<Locale, Translations> = {
     "theme.toggle": "切换主题",
     "home.loadingChartData": "正在加载航图数据...",
     "home.loadingPdfViewer": "正在加载 PDF 查看器...",
+    "home.failedToLoadChartData":
+      "航图数据加载失败。请在设置中检查航图和 CSV 目录。",
     "home.noChartSelected": "未选择航图",
     "home.openMenu": "打开菜单",
     "home.selectCategoryAndChart": "选择类别和航图以查看",
@@ -243,6 +254,9 @@ export const translations: Record<Locale, Translations> = {
     "pdf.previousBookmark": "上一个书签",
     "pdf.renderingPdf": "正在渲染 PDF...",
     "pdf.rotateClockwise": "顺时针旋转 90°",
+    "pdf.showOnMap": "在地图上显示",
+    "pdf.georefFailed": "无法地理配准：未找到足够的航路点。",
+    "pdf.georefLoading": "正在地理配准...",
     "pdf.zoomIn": "放大",
     "pdf.zoomOut": "缩小",
     "update.available": "发现新版本",

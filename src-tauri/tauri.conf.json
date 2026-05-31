@@ -30,8 +30,10 @@
     "targets": "all",
     "category": "Utility",
     "icon": ["../public/icon.png", "../public/icon.ico", "../public/icon.icns"],
+    "externalBin": ["binaries/georef-sidecar"],
+    "resources": ["resources/georef_script.py"],
     "macOS": {
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
       "signingIdentity": null
     }
   },

@@ -14,26 +14,27 @@ export default [
       "out/**",
       "dist/**",
       "build/**",
+      "public/cesium/**",
       "src-tauri/target/**",
       "src-tauri/gen/**",
     ],
   },
-  
+
   // Base JS recommended
   js.configs.recommended,
-  
+
   // TypeScript files
-  ...tseslint.configs.recommended.map(config => ({
+  ...tseslint.configs.recommended.map((config) => ({
     ...config,
     files: ["**/*.ts", "**/*.tsx"],
   })),
-  
+
   // React/Next.js files (app directory)
   {
     files: ["**/*.{ts,tsx,js,jsx}"],
     plugins: {
       "@next/next": nextPlugin,
-      "react": reactPlugin,
+      react: reactPlugin,
       "react-hooks": hooksPlugin,
     },
     rules: {
@@ -55,11 +56,12 @@ export default [
       },
     },
   },
-  
+
   // Node.js files (scripts and config files)
   {
     files: [
       "scripts/**/*.js",
+      "scripts/**/*.mjs",
       "*.config.js",
       "postcss.config.js",
       "next.config.js",
@@ -73,11 +75,14 @@ export default [
     rules: {
       "@typescript-eslint/no-require-imports": "off",
       "@typescript-eslint/no-unused-vars": "off",
-      "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+      "no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
       "no-async-promise-executor": "off", // Allow async Promise executors in Electron main process
     },
   },
-  
+
   // TypeScript declaration files
   {
     files: ["**/*.d.ts"],
