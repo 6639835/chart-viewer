@@ -22,13 +22,9 @@ fi
 
 # 检查是否有未提交的更改
 if [[ -n $(git status -s) ]]; then
-    echo -e "${YELLOW}警告: 存在未提交的更改${NC}"
+    echo -e "${RED}错误: 存在未提交的更改，请先提交或暂存${NC}"
     git status -s
-    read -p "是否继续? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
+    exit 1
 fi
 
 # 获取当前版本

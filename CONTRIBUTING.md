@@ -221,11 +221,11 @@ We follow [Semantic Versioning](https://semver.org/):
 
 ### Release Steps
 
-1. Update version in `package.json`
-2. Update `CHANGELOG.md` with new features/fixes
-3. Create a release tag
-4. Build and test the release
-5. Publish to GitHub Releases
+1. Start from a clean working tree.
+2. Run `npm run release` so `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and the `chart-viewer` entry in `src-tauri/Cargo.lock` stay on the same version.
+3. Update `CHANGELOG.md` with new features/fixes.
+4. Create and push the release tag.
+5. Let GitHub Actions build and publish the release.
 
 ## Getting Help
 

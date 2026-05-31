@@ -88,9 +88,14 @@ The project includes GitHub Actions workflows for automated cross-platform build
 # Interactive release tool
 npm run release
 
-# Or manually create a tag
-npm version patch  # or minor, major
-git push --tags
+# Or manually bump every app version before tagging
+npm version patch --no-git-tag-version  # or minor, major
+# Also update src-tauri/tauri.conf.json, src-tauri/Cargo.toml,
+# and the chart-viewer entry in src-tauri/Cargo.lock to the same version.
+git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+git commit -m "chore: bump version to vX.Y.Z"
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push && git push --tags
 ```
 
 **Build Triggers:**
