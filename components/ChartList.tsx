@@ -235,7 +235,7 @@ export default function ChartList({
                 <div key={chart.ChartId} className="relative">
                   <button
                     onClick={() => onChartSelect(chart)}
-                    className={`w-full p-4 pr-12 rounded-lg transition-all text-left ${
+                    className={`w-full p-4 pr-12 rounded-lg transition-colors text-left ${
                       selectedChart?.ChartId === chart.ChartId
                         ? "bg-blue-500 text-white shadow-lg"
                         : isSup
@@ -296,6 +296,11 @@ export default function ChartList({
                         ? t("chartList.removeBookmark")
                         : t("chartList.addBookmark")
                     }
+                    aria-label={
+                      isBookmarked
+                        ? t("chartList.removeBookmark")
+                        : t("chartList.addBookmark")
+                    }
                   >
                     {isBookmarked ? (
                       <CheckCircle2
@@ -341,7 +346,7 @@ export default function ChartList({
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setSelectedRunwayFilter(null)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   selectedRunwayFilter === null
                     ? "bg-blue-500 text-white shadow-md"
                     : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -353,7 +358,7 @@ export default function ChartList({
                 <button
                   key={runway}
                   onClick={() => setSelectedRunwayFilter(runway)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                     selectedRunwayFilter === runway
                       ? "bg-blue-500 text-white shadow-md"
                       : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -399,7 +404,7 @@ export default function ChartList({
                       <div key={chart.ChartId} className="relative">
                         <button
                           onClick={() => onChartSelect(chart)}
-                          className={`w-full p-4 pr-12 rounded-lg transition-all text-left ${
+                          className={`w-full p-4 pr-12 rounded-lg transition-colors text-left ${
                             selectedChart?.ChartId === chart.ChartId
                               ? "bg-blue-500 text-white shadow-lg"
                               : isSup
@@ -456,6 +461,11 @@ export default function ChartList({
                           }}
                           className="absolute top-2 right-2 p-2 rounded-full hover:bg-white/20 dark:hover:bg-black/20 transition-colors z-10"
                           title={
+                            isBookmarked
+                              ? t("chartList.removeBookmark")
+                              : t("chartList.addBookmark")
+                          }
+                          aria-label={
                             isBookmarked
                               ? t("chartList.removeBookmark")
                               : t("chartList.addBookmark")

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Download, RefreshCw, Rocket, X } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
 import {
@@ -27,14 +27,17 @@ export default function UpdateNotification() {
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const mountedRef = useRef(false);
 
   useEffect(() => {
+    mountedRef.current = true;
     const timeout = window.setTimeout(() => {
       setPhase("checking");
       setError(null);
 
       checkForUpdate()
         .then((info) => {
+          if (!mountedRef.current) return;
           if (!info) {
             setPhase("idle");
             return;
@@ -45,13 +48,17 @@ export default function UpdateNotification() {
           setDismissed(false);
         })
         .catch((err) => {
+          if (!mountedRef.current) return;
           setError(err instanceof Error ? err.message : String(err));
           setPhase("error");
           setDismissed(false);
         });
     }, 5000);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      mountedRef.current = false;
+      window.clearTimeout(timeout);
+    };
   }, []);
 
   const handleDismiss = () => {
@@ -63,7 +70,12 @@ export default function UpdateNotification() {
     setProgress(null);
 
     try {
-      const info = await downloadUpdate(setProgress);
+      const info = await downloadUpdate((nextProgress) => {
+        if (mountedRef.current) {
+          setProgress(nextProgress);
+        }
+      });
+      if (!mountedRef.current) return;
       if (info) {
         setUpdateInfo(info);
         setPhase("downloaded");
@@ -71,6 +83,7 @@ export default function UpdateNotification() {
         setPhase("idle");
       }
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : String(err));
       setPhase("error");
       setDismissed(false);
@@ -91,6 +104,7 @@ export default function UpdateNotification() {
     openExternal(
       "https://github.com/6639835/chart-viewer/releases/latest"
     ).catch((err) => {
+      if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : String(err));
       setPhase("error");
     });
@@ -103,7 +117,11 @@ export default function UpdateNotification() {
   const canDismiss = phase !== "downloading";
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-80">
+    <div
+      role={phase === "error" ? "alert" : "status"}
+      aria-live={phase === "error" ? "assertive" : "polite"}
+      className="fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)]"
+    >
       <div className="bg-white dark:bg-gray-800 shadow-xl rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="flex items-start justify-between p-4 pb-3">
           <div className="flex items-center gap-2">
@@ -187,7 +205,7 @@ export default function UpdateNotification() {
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div
-                    className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                    className="bg-blue-500 h-2 rounded-full transition-colors duration-300"
                     style={{ width: `${Math.round(progress?.percent ?? 0)}%` }}
                   />
                 </div>

@@ -82,6 +82,9 @@ export default function Sidebar({
             }}
             className="w-full bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white px-2 py-2 rounded flex flex-col items-center justify-center hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors group"
             title={selectedAirport}
+            aria-label={selectedAirport}
+            aria-expanded={isAirportDropdownOpen}
+            aria-haspopup="listbox"
           >
             <span className="font-bold text-xs">{selectedAirport}</span>
             <ChevronDown
@@ -100,7 +103,7 @@ export default function Sidebar({
                 }}
               />
               <div
-                className="absolute left-full top-0 ml-2 w-64 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl z-20 flex flex-col"
+                className="fixed left-20 top-2 w-[calc(100vw-6rem)] max-w-64 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl z-20 flex flex-col"
                 style={{ maxHeight: "24rem" }}
               >
                 {/* Search Box */}
@@ -112,6 +115,8 @@ export default function Sidebar({
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder={t("sidebar.searchAirport")}
+                      aria-label={t("sidebar.searchAirport")}
+                      autoComplete="off"
                       className="w-full bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white pl-10 pr-4 py-2 rounded border border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:outline-none"
                       autoFocus
                     />
@@ -121,6 +126,7 @@ export default function Sidebar({
                 {/* Airport List */}
                 <div
                   ref={airportListRef}
+                  role="listbox"
                   className={`flex-1 overflow-y-auto auto-hide-scrollbar ${isAirportScrolling ? "scrolling" : ""}`}
                 >
                   {filteredAirports.length > 0 ? (
@@ -128,6 +134,8 @@ export default function Sidebar({
                       <button
                         key={airport}
                         onClick={() => handleAirportSelect(airport)}
+                        role="option"
+                        aria-selected={airport === selectedAirport}
                         className={`w-full px-4 py-3 text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
                           airport === selectedAirport
                             ? "bg-blue-500 text-white"
