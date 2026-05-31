@@ -51,18 +51,25 @@ const LAYERS = [
 
 type GlobeViewerInstance = {
   camera: {
-    positionCartographic: { height: number };
-    positionWC: import("cesium").Cartesian3;
+    positionCartographic: {
+      longitude: number;
+      latitude: number;
+      height: number;
+    };
+    heading: number;
     getPickRay: (
       windowPosition: import("cesium").Cartesian2
     ) => import("cesium").Ray | undefined;
-    move: (direction: import("cesium").Cartesian3, amount?: number) => void;
+    setView: (options: {
+      destination?: import("cesium").Cartesian3;
+      orientation?: { heading: number; pitch: number; roll: number };
+    }) => void;
     zoomIn: (amount?: number) => void;
     zoomOut: (amount?: number) => void;
-    moveLeft: (amount?: number) => void;
-    moveRight: (amount?: number) => void;
-    moveUp: (amount?: number) => void;
-    moveDown: (amount?: number) => void;
+    rotateLeft: (angle?: number) => void;
+    rotateRight: (angle?: number) => void;
+    rotateUp: (angle?: number) => void;
+    rotateDown: (angle?: number) => void;
   };
   scene?: {
     canvas: HTMLCanvasElement;
@@ -111,6 +118,100 @@ function getCameraHeight(viewer: GlobeViewerInstance) {
 
 function clampCameraHeight(height: number) {
   return clamp(height, MIN_CAMERA_HEIGHT_METERS, MAX_CAMERA_HEIGHT_METERS);
+}
+
+function normalizeGlobeCamera(
+  viewer: GlobeViewerInstance,
+  Cesium: typeof import("cesium"),
+  height = clampCameraHeight(getCameraHeight(viewer))
+) {
+  const position = viewer.camera.positionCartographic;
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromRadians(
+      position.longitude,
+      position.latitude,
+      clampCameraHeight(height)
+    ),
+    orientation: {
+      heading: Number.isFinite(viewer.camera.heading)
+        ? viewer.camera.heading
+        : 0,
+      pitch: Cesium.Math.toRadians(-90),
+      roll: 0,
+    },
+  });
+}
+
+function getGlobeCartographicAtClientPoint(
+  viewer: GlobeViewerInstance,
+  Cesium: typeof import("cesium"),
+  clientPoint?: ClientPoint | null
+) {
+  if (!clientPoint || !viewer.scene) {
+    return null;
+  }
+
+  const canvasRect = viewer.scene.canvas.getBoundingClientRect();
+  const canvasPoint = new Cesium.Cartesian2(
+    clientPoint.clientX - canvasRect.left,
+    clientPoint.clientY - canvasRect.top
+  );
+  const ray = viewer.camera.getPickRay(canvasPoint);
+  if (!ray) {
+    return null;
+  }
+
+  const position = viewer.scene.globe.pick(ray, viewer.scene);
+  return position ? Cesium.Cartographic.fromCartesian(position) : null;
+}
+
+function applyCursorZoomAnchor(
+  viewer: GlobeViewerInstance,
+  Cesium: typeof import("cesium"),
+  anchorBefore: import("cesium").Cartographic | null,
+  clientPoint: ClientPoint | null | undefined,
+  height: number
+) {
+  if (!anchorBefore) {
+    normalizeGlobeCamera(viewer, Cesium, height);
+    return;
+  }
+
+  const anchorAfter = getGlobeCartographicAtClientPoint(
+    viewer,
+    Cesium,
+    clientPoint
+  );
+  if (!anchorAfter) {
+    normalizeGlobeCamera(viewer, Cesium, height);
+    return;
+  }
+
+  const current = viewer.camera.positionCartographic;
+  const nextLongitude = Cesium.Math.negativePiToPi(
+    current.longitude +
+      Cesium.Math.negativePiToPi(anchorBefore.longitude - anchorAfter.longitude)
+  );
+  const nextLatitude = clamp(
+    current.latitude + (anchorBefore.latitude - anchorAfter.latitude),
+    -Cesium.Math.PI_OVER_TWO + Cesium.Math.EPSILON6,
+    Cesium.Math.PI_OVER_TWO - Cesium.Math.EPSILON6
+  );
+
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromRadians(
+      nextLongitude,
+      nextLatitude,
+      clampCameraHeight(height)
+    ),
+    orientation: {
+      heading: Number.isFinite(viewer.camera.heading)
+        ? viewer.camera.heading
+        : 0,
+      pitch: Cesium.Math.toRadians(-90),
+      roll: 0,
+    },
+  });
 }
 
 function getAirportCoords(
@@ -342,79 +443,54 @@ function zoomGlobeByDirection(
     return;
   }
 
-  const anchored = zoomGlobeAtClientPoint(
-    viewer,
-    direction,
-    amount,
-    Cesium,
-    clientPoint
-  );
-  if (!anchored) {
-    if (direction === "in") {
-      viewer.camera.zoomIn(amount);
-    } else {
-      viewer.camera.zoomOut(amount);
-    }
+  if (Cesium) {
+    normalizeGlobeCamera(viewer, Cesium, boundedHeight);
+  }
+  const anchorBefore = Cesium
+    ? getGlobeCartographicAtClientPoint(viewer, Cesium, clientPoint)
+    : null;
+
+  if (direction === "in") {
+    viewer.camera.zoomIn(amount);
+  } else {
+    viewer.camera.zoomOut(amount);
+  }
+
+  if (Cesium) {
+    applyCursorZoomAnchor(
+      viewer,
+      Cesium,
+      anchorBefore,
+      clientPoint,
+      targetHeight
+    );
   }
 
   viewer.scene?.requestRender?.();
 }
 
-function zoomGlobeAtClientPoint(
+function panGlobeByWheel(
   viewer: GlobeViewerInstance,
-  direction: "in" | "out",
-  amount: number,
-  Cesium?: typeof import("cesium") | null,
-  clientPoint?: ClientPoint | null
+  event: WheelEvent,
+  Cesium?: typeof import("cesium") | null
 ) {
-  if (!Cesium || !clientPoint || !viewer.scene) {
-    return false;
-  }
+  if (!Cesium) return;
 
-  const canvasRect = viewer.scene.canvas.getBoundingClientRect();
-  const canvasPoint = new Cesium.Cartesian2(
-    clientPoint.clientX - canvasRect.left,
-    clientPoint.clientY - canvasRect.top
-  );
-  const ray = viewer.camera.getPickRay(canvasPoint);
-  if (!ray) {
-    return false;
-  }
+  normalizeGlobeCamera(viewer, Cesium);
 
-  const target = viewer.scene.globe.pick(ray, viewer.scene);
-  if (!target) {
-    return false;
-  }
+  const height = clampCameraHeight(getCameraHeight(viewer));
+  const rotationScale =
+    (height * WHEEL_PAN_SENSITIVITY) /
+    (Cesium.Ellipsoid.WGS84.maximumRadius + height);
+  const horizontal = clamp(event.deltaX, -120, 120) * rotationScale;
+  const vertical = clamp(event.deltaY, -120, 120) * rotationScale;
 
-  const moveDirection = Cesium.Cartesian3.subtract(
-    target,
-    viewer.camera.positionWC,
-    new Cesium.Cartesian3()
-  );
+  if (horizontal > 0) viewer.camera.rotateRight(Math.abs(horizontal));
+  if (horizontal < 0) viewer.camera.rotateLeft(Math.abs(horizontal));
+  if (vertical > 0) viewer.camera.rotateUp(Math.abs(vertical));
+  if (vertical < 0) viewer.camera.rotateDown(Math.abs(vertical));
 
-  if (Cesium.Cartesian3.magnitude(moveDirection) <= 0) {
-    return false;
-  }
-
-  Cesium.Cartesian3.normalize(moveDirection, moveDirection);
-  if (direction === "out") {
-    Cesium.Cartesian3.negate(moveDirection, moveDirection);
-  }
-
-  viewer.camera.move(moveDirection, amount);
-  return true;
-}
-
-function panGlobeByWheel(viewer: GlobeViewerInstance, event: WheelEvent) {
-  const panScale =
-    clampCameraHeight(getCameraHeight(viewer)) * WHEEL_PAN_SENSITIVITY;
-  const horizontal = clamp(event.deltaX, -120, 120) * panScale;
-  const vertical = clamp(event.deltaY, -120, 120) * panScale;
-
-  if (horizontal > 0) viewer.camera.moveRight(Math.abs(horizontal));
-  if (horizontal < 0) viewer.camera.moveLeft(Math.abs(horizontal));
-  if (vertical > 0) viewer.camera.moveDown(Math.abs(vertical));
-  if (vertical < 0) viewer.camera.moveUp(Math.abs(vertical));
+  normalizeGlobeCamera(viewer, Cesium, height);
 
   viewer.scene?.requestRender?.();
 }
@@ -570,7 +646,7 @@ export default function GlobeViewer({
         return;
       }
 
-      panGlobeByWheel(viewer, event);
+      panGlobeByWheel(viewer, event, cesiumRef.current);
     };
 
     el.addEventListener("wheel", handleWheel, {
@@ -632,13 +708,16 @@ export default function GlobeViewer({
         MAX_GLOBE_DEVICE_PIXEL_RATIO
       );
 
-      // Apple Maps-style input: pinch gesture = cursor-anchored zoom, scroll = pan.
-      // Disable Cesium's built-in wheel/pinch zoom so it cannot center-zoom first.
+      // Apple Maps-style input: pinch gesture = zoom, scroll = globe pan.
+      // Keep the camera surface-normal so zoom-out behaves like a standard globe.
       const ctrl = viewer.scene.screenSpaceCameraController;
       ctrl.inertiaZoom = 0;
       ctrl.minimumZoomDistance = MIN_CAMERA_HEIGHT_METERS;
       ctrl.maximumZoomDistance = MAX_CAMERA_HEIGHT_METERS;
       ctrl.zoomEventTypes = [Cesium.CameraEventType.RIGHT_DRAG];
+      ctrl.tiltEventTypes = undefined;
+      ctrl.lookEventTypes = undefined;
+      viewer.camera.constrainedAxis = Cesium.Cartesian3.UNIT_Z;
 
       viewerRef.current = viewer;
 
