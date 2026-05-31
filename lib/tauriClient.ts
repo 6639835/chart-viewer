@@ -117,13 +117,13 @@ export function getPdfUrl(filename: string): string {
 export async function georeferenceChart(
   chartId: string,
   filePath: string,
-  waypointFilePath?: string,
+  waypointFilePaths: string[] = [],
   pageNumber?: number
 ): Promise<GeorefResult> {
   return invoke<GeorefResult>("georeference_chart", {
     chartId,
     filePath,
-    waypointFilePath: waypointFilePath ?? null,
+    waypointFilePaths,
     pageNumber: pageNumber ?? null,
   });
 }

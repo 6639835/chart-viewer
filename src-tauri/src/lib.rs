@@ -858,11 +858,11 @@ fn locate_georef_sidecar() -> Option<PathBuf> {
     }
 }
 
-#[tauri::command]
-fn georeference_chart(
+fn georeference_chart_blocking(
     app: AppHandle,
     chart_id: String,
     file_path: String,
+    waypoint_file_paths: Option<Vec<String>>,
     waypoint_file_path: Option<String>,
     page_number: Option<u32>,
 ) -> Result<GeorefResult, String> {
@@ -893,9 +893,16 @@ fn georeference_chart(
         .arg("--csv-dir")
         .arg(&csv_dir);
 
-    // Resolve and pass the 航路点坐标 waypoint PDF if provided
-    if let Some(ref wp_file) = waypoint_file_path {
-        if let Some(wp_path) = find_pdf_path(&charts_dir, wp_file) {
+    // Resolve and pass all 航路点坐标 waypoint PDFs if provided.
+    // Some airports split the coordinate table across multiple pages/files.
+    let mut waypoint_files = waypoint_file_paths.unwrap_or_default();
+    if let Some(wp_file) = waypoint_file_path {
+        waypoint_files.push(wp_file);
+    }
+    waypoint_files.sort();
+    waypoint_files.dedup();
+    for wp_file in waypoint_files {
+        if let Some(wp_path) = find_pdf_path(&charts_dir, &wp_file) {
             cmd.arg("--waypoint-pdf").arg(&wp_path);
         }
     }
@@ -918,6 +925,29 @@ fn georeference_chart(
         serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse georef output: {e}"))?;
 
     Ok(GeorefResult { chart_id, pages })
+}
+
+#[tauri::command]
+async fn georeference_chart(
+    app: AppHandle,
+    chart_id: String,
+    file_path: String,
+    waypoint_file_paths: Option<Vec<String>>,
+    waypoint_file_path: Option<String>,
+    page_number: Option<u32>,
+) -> Result<GeorefResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        georeference_chart_blocking(
+            app,
+            chart_id,
+            file_path,
+            waypoint_file_paths,
+            waypoint_file_path,
+            page_number,
+        )
+    })
+    .await
+    .map_err(|error| format!("Georef task failed: {error}"))?
 }
 
 pub fn run() {

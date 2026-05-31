@@ -72,6 +72,7 @@ export type TranslationKey =
   | "pdf.rotateClockwise"
   | "pdf.showOnMap"
   | "pdf.georefFailed"
+  | "pdf.georefFitFailed"
   | "pdf.georefLoading"
   | "pdf.zoomIn"
   | "pdf.zoomOut"
@@ -171,6 +172,8 @@ export const translations: Record<Locale, Translations> = {
     "pdf.rotateClockwise": "Rotate 90°",
     "pdf.showOnMap": "Show on Map",
     "pdf.georefFailed": "Could not georeference: not enough waypoints found.",
+    "pdf.georefFitFailed":
+      "Could not georeference: waypoint positions did not align.",
     "pdf.georefLoading": "Georeferencing...",
     "pdf.zoomIn": "Zoom In",
     "pdf.zoomOut": "Zoom Out",
@@ -256,6 +259,7 @@ export const translations: Record<Locale, Translations> = {
     "pdf.rotateClockwise": "顺时针旋转 90°",
     "pdf.showOnMap": "在地图上显示",
     "pdf.georefFailed": "无法地理配准：未找到足够的航路点。",
+    "pdf.georefFitFailed": "无法地理配准：航路点位置无法匹配。",
     "pdf.georefLoading": "正在地理配准...",
     "pdf.zoomIn": "放大",
     "pdf.zoomOut": "缩小",

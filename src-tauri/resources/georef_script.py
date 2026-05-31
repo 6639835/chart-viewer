@@ -40,11 +40,14 @@ import fitz  # PyMuPDF
 Point = Tuple[float, float]
 
 EARTH_RADIUS_M = 6_378_137.0
-MIN_GEOREF_CONTROL_POINTS = 3
-MAX_GEOREF_RMSE_METERS = 1000.0
+MIN_GEOREF_CONTROL_POINTS = 4
+MAX_GEOREF_RMSE_METERS = 300.0
 WAYPOINT_NAME_RE = re.compile(r"[A-Z]{2}\d{3}|RW\d{2}[LRC]?|[A-Z]{3,5}")
 # Regex that matches a combined lat/lon coordinate string (starts N/S, contains E/W)
 COORD_RE = re.compile(r"^[NS].*[EW].*")
+# Labels that appear on charts but are NOT navigation waypoints and must never be matched.
+# TCH = Threshold Crossing Height (a printed altitude value annotation, not a fix name).
+IGNORED_FIX_LABELS = {"TCH"}
 
 
 @dataclass
@@ -230,7 +233,14 @@ def load_designated_points(csv_dir: Path) -> Dict[str, RealPoint]:
 
 
 def load_vor_points(csv_dir: Path) -> Dict[str, RealPoint]:
-    path = csv_dir / "VOR.csv"
+    return load_radio_points(csv_dir / "VOR.csv")
+
+
+def load_ndb_points(csv_dir: Path) -> Dict[str, RealPoint]:
+    return load_radio_points(csv_dir / "NDB.csv")
+
+
+def load_radio_points(path: Path) -> Dict[str, RealPoint]:
     points: Dict[str, RealPoint] = {}
     if not path.exists():
         return points
@@ -247,6 +257,12 @@ def load_vor_points(csv_dir: Path) -> Dict[str, RealPoint]:
             except ValueError:
                 continue
             points[name] = RealPoint(name=name, lat=lat, lon=lon)
+    return points
+
+
+def load_navaid_points(csv_dir: Path) -> Dict[str, RealPoint]:
+    points = load_vor_points(csv_dir)
+    points.update(load_ndb_points(csv_dir))
     return points
 
 
@@ -282,6 +298,48 @@ def reflected_similarity_fit(points: Sequence[ControlPoint]) -> Transform6:
     e = tx - (a * sx + c * sy)
     f = ty - (b * sx + d * sy)
     return a, b, c, d, e, f
+
+
+def _solve_3x3(matrix: Sequence[Sequence[float]], values: Sequence[float]) -> Tuple[float, float, float]:
+    """Solve a 3×3 linear system via Gaussian elimination with partial pivoting."""
+    augmented = [list(row) + [value] for row, value in zip(matrix, values)]
+    for col in range(3):
+        pivot = max(range(col, 3), key=lambda row: abs(augmented[row][col]))
+        augmented[col], augmented[pivot] = augmented[pivot], augmented[col]
+        pivot_value = augmented[col][col]
+        if abs(pivot_value) < 1e-12:
+            raise ValueError("degenerate affine control points")
+        for item in range(col, 4):
+            augmented[col][item] /= pivot_value
+        for row in range(3):
+            if row == col:
+                continue
+            factor = augmented[row][col]
+            for item in range(col, 4):
+                augmented[row][item] -= factor * augmented[col][item]
+    return augmented[0][3], augmented[1][3], augmented[2][3]
+
+
+def affine_fit(points: Sequence[ControlPoint]) -> Transform6:
+    """Least-squares affine fit (6 DOF) allowing independent X/Y scales and shear.
+
+    Needed for charts using Lambert Conformal Conic projection, where the
+    horizontal and vertical scales differ by ~20-30% near 40°N.
+    """
+    ata = [[0.0, 0.0, 0.0] for _ in range(3)]
+    rhs_x = [0.0, 0.0, 0.0]
+    rhs_y = [0.0, 0.0, 0.0]
+    for p in points:
+        row = (p.mupdf_x, p.mupdf_y, 1.0)
+        for i in range(3):
+            rhs_x[i] += row[i] * p.mercator_x
+            rhs_y[i] += row[i] * p.mercator_y
+            for j in range(3):
+                ata[i][j] += row[i] * row[j]
+
+    ax, cx, ex = _solve_3x3(ata, rhs_x)
+    by, dy, fy = _solve_3x3(ata, rhs_y)
+    return ax, by, cx, dy, ex, fy
 
 
 def apply_transform(t: Transform6, x: float, y: float) -> Tuple[float, float]:
@@ -378,27 +436,161 @@ def robust_reflected_similarity_fit(
     return best_transform, best_inliers
 
 
+def robust_affine_fit(
+    points: Sequence[ControlPoint],
+    inlier_threshold_meters: float = 800.0,
+    rmse_cap: float = MAX_GEOREF_RMSE_METERS,
+) -> Tuple[Optional[Transform6], List[ControlPoint]]:
+    """RANSAC affine fit for charts using Lambert Conformal Conic or other non-isotropic projections.
+
+    Uses triples of control points as minimal samples (affine requires 3 non-collinear points).
+    An exact 3-point fit is always a valid seed; iterative re-fitting with least-squares is
+    used when 4+ inliers are found.
+
+    Selection criterion: among candidates whose RMSE is within rmse_cap, prefer the one with
+    the most inliers, then the largest |det| of the 2×2 linear part (larger det = seed triple
+    spans a wider geographic area, naturally preferring plan-view controls over approach-profile
+    controls that sit at non-geographic positions), then smallest RMSE.
+    """
+    candidates = list(points)
+    if len(candidates) < MIN_GEOREF_CONTROL_POINTS:
+        return None, []
+
+    # Candidates with RMSE within cap — valid georefs.
+    # Separately track the globally best candidate (any RMSE) as a fallback.
+    valid_transform: Optional[Transform6] = None
+    valid_inliers: List[ControlPoint] = []
+    valid_det = 0.0
+    valid_rmse = math.inf
+
+    # Deduplicate by waypoint name before generating seed triples.
+    # The same fix often appears in both the geographic plan view and the approach
+    # profile/minima section.  _unique_by_waypoint keeps the first occurrence, which
+    # matches reading order (top-to-bottom) and therefore the plan-view instance.
+    # The full candidates list (with duplicates) is still used for inlier counting so
+    # that profile duplicates are correctly rejected via _dedupe_inliers.
+    seed_candidates = _unique_by_waypoint(candidates)
+
+    fallback_transform: Optional[Transform6] = None
+    fallback_inliers: List[ControlPoint] = []
+    fallback_det = 0.0
+    fallback_rmse = math.inf
+
+    for i, first in enumerate(seed_candidates):
+        for j, second in enumerate(seed_candidates[i + 1:], start=i + 1):
+            for third in seed_candidates[j + 1:]:
+                if len({first.waypoint, second.waypoint, third.waypoint}) < 3:
+                    continue
+                # Reject degenerate (nearly collinear) triples
+                area2 = abs(
+                    (second.mupdf_x - first.mupdf_x) * (third.mupdf_y - first.mupdf_y)
+                    - (second.mupdf_y - first.mupdf_y) * (third.mupdf_x - first.mupdf_x)
+                )
+                if area2 < 200.0:
+                    continue
+                try:
+                    transform = affine_fit([first, second, third])
+                except ValueError:
+                    continue
+
+                a, b, c, d = transform[0], transform[1], transform[2], transform[3]
+                seed_det = abs(a * d - b * c)
+
+                inliers: List[ControlPoint] = []
+                refined = transform
+                for _ in range(3):
+                    residuals = {id(p): _residual(refined, p) for p in candidates}
+                    raw = [p for p in candidates if residuals[id(p)] <= inlier_threshold_meters]
+                    refined_inliers = _dedupe_inliers(raw, residuals)
+                    if len(refined_inliers) < MIN_GEOREF_CONTROL_POINTS:
+                        break
+                    if len(refined_inliers) >= 4:
+                        try:
+                            next_refined = affine_fit(refined_inliers)
+                        except ValueError:
+                            break
+                        if {id(p) for p in refined_inliers} == {id(p) for p in inliers}:
+                            refined = next_refined
+                            inliers = refined_inliers
+                            break
+                        refined = next_refined
+                    inliers = refined_inliers
+
+                if len(inliers) < MIN_GEOREF_CONTROL_POINTS:
+                    continue
+                finals = [_residual(refined, p) for p in inliers]
+                rmse = math.sqrt(sum(v * v for v in finals) / len(finals))
+
+                def _better(n_in: int, det: float, r: float,
+                            bn: int, bd: float, br: float) -> bool:
+                    if n_in != bn:
+                        return n_in > bn
+                    if det != bd:
+                        return det > bd
+                    return r < br
+
+                if rmse <= rmse_cap and _better(len(inliers), seed_det, rmse,
+                                                len(valid_inliers), valid_det, valid_rmse):
+                    valid_transform = refined
+                    valid_inliers = inliers
+                    valid_det = seed_det
+                    valid_rmse = rmse
+                if _better(len(inliers), seed_det, rmse,
+                           len(fallback_inliers), fallback_det, fallback_rmse):
+                    fallback_transform = refined
+                    fallback_inliers = inliers
+                    fallback_det = seed_det
+                    fallback_rmse = rmse
+
+    if valid_transform is not None:
+        return valid_transform, valid_inliers
+    return fallback_transform, fallback_inliers
+
+
 def fit_page_transform(
     controls: Sequence[ControlPoint],
 ) -> Tuple[Optional[Transform6], Optional[float]]:
     if len(controls) < MIN_GEOREF_CONTROL_POINTS:
         return None, None
     transform, inliers = robust_reflected_similarity_fit(controls)
-    if transform is None:
+
+    def score(
+        candidate_transform: Optional[Transform6],
+        candidate_inliers: Sequence[ControlPoint],
+    ) -> Optional[Tuple[Transform6, List[ControlPoint], float]]:
+        if candidate_transform is None or len(candidate_inliers) < MIN_GEOREF_CONTROL_POINTS:
+            return None
+        squared = sum(_residual(candidate_transform, p) ** 2 for p in candidate_inliers)
+        return candidate_transform, list(candidate_inliers), math.sqrt(squared / len(candidate_inliers))
+
+    best = score(transform, inliers)
+    # Also try affine even when similarity is "acceptable".  Terminal charts are
+    # often projected rather than purely scaled/rotated, and a correct extra
+    # control near a holding pattern can expose the small anisotropy.  Require at
+    # least four affine inliers so a sparse 3-point page cannot be accepted just
+    # because affine can exactly pass through any three non-collinear points.
+    if len(_unique_by_waypoint(controls)) >= 4:
+        affine_transform, affine_inliers = robust_affine_fit(controls)
+        affine_best = score(affine_transform, affine_inliers)
+        if (
+            affine_best is not None
+            and len(affine_best[1]) >= 4
+            and (
+                best is None
+                or len(affine_best[1]) > len(best[1])
+                or (len(affine_best[1]) == len(best[1]) and affine_best[2] < best[2] * 0.95)
+            )
+        ):
+            best = affine_best
+
+    if best is None or best[2] > MAX_GEOREF_RMSE_METERS:
         return None, None
+
+    transform, inliers, rmse = best
     inlier_ids = {id(p) for p in inliers}
-    squared = 0.0
     for p in controls:
-        r = _residual(transform, p)
-        p.georef_residual_meters = r
+        p.georef_residual_meters = _residual(transform, p)
         p.used_for_georef = id(p) in inlier_ids
-        if p.used_for_georef:
-            squared += r * r
-    rmse = math.sqrt(squared / len(inliers)) if inliers else None
-    if len(inliers) < MIN_GEOREF_CONTROL_POINTS:
-        return None, None
-    if rmse is None or rmse > MAX_GEOREF_RMSE_METERS:
-        return None, None
     return transform, rmse
 
 
@@ -432,6 +624,10 @@ def extract_filled_triangles(page: fitz.Page) -> List[Triangle]:
     """
     triangles: List[Triangle] = []
     pw, ph = float(page.rect.width), float(page.rect.height)
+    text_boxes = [
+        (float(x0), float(y0), float(x1), float(y1))
+        for x0, y0, x1, y1, *_ in page.get_text("words")
+    ]
 
     for idx, drawing in enumerate(page.get_drawings()):
         rect = drawing.get("rect")
@@ -440,8 +636,11 @@ def extract_filled_triangles(page: fitz.Page) -> List[Triangle]:
         w, h = float(rect.width), float(rect.height)
         x0, y0 = float(rect.x0), float(rect.y0)
 
-        # Exclude footer and header bands (text/legend areas)
-        if y0 > ph - 50 or y0 < 20:
+        # Exclude footer and header bands (text/legend areas).
+        # The NAIP chart title box always occupies the top ~51pt; raising the cutoff
+        # from 20 to 55 eliminates rendered-text vector paths in the header that the
+        # diamond/triangle detectors would otherwise mistake for geographic waypoints.
+        if y0 > ph - 50 or y0 < 55:
             continue
         # Exclude left/right margins where text legends often live
         if x0 < 15 or x0 > pw - 15:
@@ -523,6 +722,11 @@ def extract_filled_triangles(page: fitz.Page) -> List[Triangle]:
                     matched = True
 
         if matched and cx is not None and cy is not None:
+            # Text glyph outlines and underlines can have the same tiny closed
+            # polygon shapes as fix symbols.  If the candidate center lies inside
+            # an extracted word box, it is text, not a geographic waypoint marker.
+            if any(x0 <= cx <= x1 and y0 <= cy <= y1 for x0, y0, x1, y1 in text_boxes):
+                continue
             triangles.append(
                 Triangle(
                     drawing_index=idx,
@@ -609,8 +813,10 @@ def extract_all_fix_controls(
     """Match all fix symbols (filled/hollow triangles, filled/hollow diamonds) to
     known waypoint coordinates from any available source.
 
-    Lookup priority: terminal_locations (waypoint PDF) → designated (DESIGNATED_POINT.csv)
-    → navaid_locations (VOR.csv, 3-letter IDs only).
+    Lookup priority: terminal_locations (waypoint PDF) → designated (DESIGNATED_POINT.csv).
+    VOR/NDB/navaid IDs are intentionally not matched here: terminal charts contain
+    small vector text boxes and ATC tags that can look like fix diamonds, and a
+    false generic match would block the precise navaid-symbol detector later.
 
     Uses greedy nearest-symbol matching with 80pt max distance.  Profile-section
     duplicate labels (>200pt from any symbol) are naturally excluded by the distance cap.
@@ -626,11 +832,11 @@ def extract_all_fix_controls(
     for word in page.get_text("words"):
         x0, y0, x1, y1, text = word[:5]
         text = str(text).strip().upper()
-        if text in existing_names or not _FIX_WORD_RE.fullmatch(text):
+        if text in IGNORED_FIX_LABELS or text in existing_names or not _FIX_WORD_RE.fullmatch(text):
+            continue
+        if re.fullmatch(r"[A-Z]{3}", text) and text in navaid_locations:
             continue
         location = combined.get(text)
-        if location is None and re.fullmatch(r"[A-Z]{3}", text):
-            location = navaid_locations.get(text)
         if location is None:
             continue
         lx = (float(x0) + float(x1)) / 2.0
@@ -673,7 +879,7 @@ def extract_navaid_controls(
     navaid_locations: Dict[str, RealPoint],
     existing_names: set,
 ) -> List[ControlPoint]:
-    """Match complex VOR/DME station glyphs (navaid_symbol) to VOR.csv entries."""
+    """Match complex radio navaid glyphs (navaid_symbol) to VOR.csv/NDB.csv entries."""
     symbols = [s for s in extract_terminal_symbols(page) if s.source == "navaid_symbol"]
     if not symbols:
         return []
@@ -682,7 +888,7 @@ def extract_navaid_controls(
     for word in page.get_text("words"):
         x0, y0, x1, y1, text = word[:5]
         text = str(text).strip().upper()
-        if text in existing_names or not re.fullmatch(r"[A-Z]{3}", text):
+        if text in IGNORED_FIX_LABELS or text in existing_names or not re.fullmatch(r"[A-Z]{2,3}", text):
             continue
         location = navaid_locations.get(text)
         if location is None:
@@ -724,6 +930,7 @@ def extract_navaid_controls(
 def extract_waypoint_symbol_controls(
     page: fitz.Page,
     terminal_locations: Dict[str, RealPoint],
+    navaid_locations: Dict[str, RealPoint],
     existing_names: set,
 ) -> List[ControlPoint]:
     """Match larger terminal waypoint glyphs to waypoint PDF coordinate rows."""
@@ -735,7 +942,9 @@ def extract_waypoint_symbol_controls(
     for word in page.get_text("words"):
         x0, y0, x1, y1, text = word[:5]
         text = str(text).strip().upper()
-        if text in existing_names or not _FIX_WORD_RE.fullmatch(text):
+        if text in IGNORED_FIX_LABELS or text in existing_names or not _FIX_WORD_RE.fullmatch(text):
+            continue
+        if re.fullmatch(r"[A-Z]{2,3}", text) and text in navaid_locations:
             continue
         location = terminal_locations.get(text)
         if location is None:
@@ -781,18 +990,18 @@ def extract_waypoint_symbol_controls(
 def process_pdf(
     pdf_path: Path,
     csv_dir: Path,
-    waypoint_pdf: Optional[Path] = None,
+    waypoint_pdfs: Optional[Sequence[Path]] = None,
     page_number: Optional[int] = None,
 ) -> List[dict]:
     designated = load_designated_points(csv_dir)
-    navaid = load_vor_points(csv_dir)
+    navaid = load_navaid_points(csv_dir)
 
-    # Terminal waypoints come from the airport's 航路点坐标 (waypoint coordinate) PDF.
-    # This PDF is part of the chart set and is identified by ChartName in Charts.csv.
-    # The Rust backend resolves it and passes the path via --waypoint-pdf.
+    # Terminal waypoints come from the airport's 航路点坐标 (waypoint coordinate) PDFs.
+    # Large airports split the table across multiple pages; each is passed via --waypoint-pdf.
     terminal_locations: Dict[str, RealPoint] = {}
-    if waypoint_pdf is not None and waypoint_pdf.is_file():
-        terminal_locations = _extract_waypoints_from_pdf(waypoint_pdf)
+    for waypoint_pdf in (waypoint_pdfs or []):
+        if waypoint_pdf.is_file():
+            terminal_locations.update(_extract_waypoints_from_pdf(waypoint_pdf))
 
     results = []
     with fitz.open(pdf_path) as doc:
@@ -808,12 +1017,16 @@ def process_pdf(
             page_width = float(rect.width)
             page_height = float(rect.height)
 
-            # Phase 1: all fix symbols (triangles, diamonds) matched against all coordinate sources
-            controls = extract_all_fix_controls(page, designated, terminal_locations, navaid, set())
+            # Phase 1: larger terminal waypoint glyphs from the waypoint table PDF.
+            # Run this before the generic triangle/diamond detector: text glyphs can
+            # look like small filled polygons, and a false generic match would block
+            # the correct terminal symbol for the same waypoint name.
+            controls = extract_waypoint_symbol_controls(page, terminal_locations, navaid, set())
             existing = {p.waypoint for p in controls}
 
-            # Phase 2: larger terminal waypoint glyphs from the waypoint table PDF
-            extra = extract_waypoint_symbol_controls(page, terminal_locations, existing)
+            # Phase 2: all remaining fix symbols (triangles, diamonds) matched
+            # against all coordinate sources.
+            extra = extract_all_fix_controls(page, designated, terminal_locations, navaid, existing)
             controls.extend(extra)
             existing.update(p.waypoint for p in extra)
 
@@ -854,8 +1067,9 @@ def parse_args(argv: Optional[Sequence] = None) -> argparse.Namespace:
     parser.add_argument(
         "--waypoint-pdf",
         type=Path,
-        default=None,
-        help="Path to the airport's 航路点坐标 PDF (terminal waypoint coordinate table)",
+        action="append",
+        default=[],
+        help="Path to an airport 航路点坐标 PDF (may be repeated for multi-page tables)",
     )
     parser.add_argument(
         "--page",
@@ -875,7 +1089,7 @@ def main(argv: Optional[Sequence] = None) -> int:
         print(f"CSV directory not found: {args.csv_dir}", file=sys.stderr)
         return 1
     try:
-        results = process_pdf(args.pdf, args.csv_dir, args.waypoint_pdf, args.page)
+        results = process_pdf(args.pdf, args.csv_dir, args.waypoint_pdf or None, args.page)
         print(json.dumps(results, ensure_ascii=False))
         return 0
     except Exception as exc:  # noqa: BLE001

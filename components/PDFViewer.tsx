@@ -49,7 +49,11 @@ interface PDFViewerProps {
   onShowOnMap?: (pageNumber: number) => void;
   georefLoading?: boolean;
   getPageImageRef?: MutableRefObject<
-    ((pageNumber: number) => Promise<string | null>) | null
+    | ((
+        pageNumber: number,
+        options?: { darkMode?: boolean }
+      ) => Promise<string | null>)
+    | null
   >;
 }
 
@@ -230,6 +234,32 @@ function canvasToBlobUrl(
       quality
     );
   });
+}
+
+function applyDarkPdfCanvasFilter(canvas: HTMLCanvasElement) {
+  const width = canvas.width;
+  const height = canvas.height;
+  const context = canvas.getContext("2d", { alpha: false });
+
+  if (!context || width <= 0 || height <= 0) {
+    return false;
+  }
+
+  const imageData = context.getImageData(0, 0, width, height);
+  const { data } = imageData;
+
+  for (let index = 0; index < data.length; index += 4) {
+    const red = 255 - data[index];
+    const green = 255 - data[index + 1];
+    const blue = 255 - data[index + 2];
+
+    data[index] = clamp(-0.574 * red + 1.43 * green + 0.144 * blue, 0, 255);
+    data[index + 1] = clamp(0.426 * red + 0.43 * green + 0.144 * blue, 0, 255);
+    data[index + 2] = clamp(red + 1.43 * green - 0.856 * blue, 0, 255);
+  }
+
+  context.putImageData(imageData, 0, 0);
+  return true;
 }
 
 function releaseCanvasBackingStore(canvas: HTMLCanvasElement | null) {
@@ -457,12 +487,12 @@ export default function PDFViewer({
   const scrollStartRef = useRef({ left: 0, top: 0 });
   const latestPageNumberRef = useRef(1);
 
-  const { theme } = useTheme();
+  const { resolvedTheme } = useTheme();
   const isScrolling = useAutoHideScrollbar(containerRef, {
     enabled: !autoFit,
   });
 
-  const invertColors = theme === "dark";
+  const invertColors = resolvedTheme === "dark";
   const autoFitScale = useMemo(() => {
     if (!pageSize || containerSize.width <= 0 || containerSize.height <= 0) {
       return 1;
@@ -624,7 +654,10 @@ export default function PDFViewer({
   useEffect(() => {
     if (!getPageImageRef) return;
 
-    getPageImageRef.current = async (requestedPageNumber: number) => {
+    getPageImageRef.current = async (
+      requestedPageNumber: number,
+      options?: { darkMode?: boolean }
+    ) => {
       const page = await getPage(requestedPageNumber);
       if (!page) return null;
 
@@ -660,6 +693,9 @@ export default function PDFViewer({
 
       try {
         await renderTask.promise;
+        if (options?.darkMode) {
+          applyDarkPdfCanvasFilter(canvas);
+        }
         return await canvasToBlobUrl(
           canvas,
           GLOBE_OVERLAY_IMAGE_TYPE,

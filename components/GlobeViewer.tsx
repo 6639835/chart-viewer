@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Home, Layers, Minus, Plus, SlidersHorizontal, X } from "lucide-react";
+import {
+  Home,
+  Layers,
+  Loader2,
+  Minus,
+  Plus,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import type { ChartCorners } from "@/types/georef";
 import type { AirportCoord } from "@/lib/tauriClient";
 
@@ -16,6 +24,7 @@ interface GlobeViewerProps {
   onClose: () => void;
   targetAirport?: string;
   chartOverlay?: ChartOverlayData | null;
+  chartOverlayLoading?: boolean;
   airportCoords?: AirportCoord[];
 }
 
@@ -213,11 +222,14 @@ function getChartOverlayPositions(
 }
 
 function getChartOverlayTextureCoordinates(Cesium: typeof import("cesium")) {
+  // Cesium uploads Image material textures with flipY enabled, so UV(0,0)
+  // samples the source image's top-left pixel. Keep the PDF canvas corners in
+  // top-left PDF order: TL, TR, BR, BL.
   return new Cesium.PolygonHierarchy([
-    new Cesium.Cartesian2(0, 1),
-    new Cesium.Cartesian2(1, 1),
-    new Cesium.Cartesian2(1, 0),
     new Cesium.Cartesian2(0, 0),
+    new Cesium.Cartesian2(1, 0),
+    new Cesium.Cartesian2(1, 1),
+    new Cesium.Cartesian2(0, 1),
   ] as unknown as import("cesium").Cartesian3[]);
 }
 
@@ -411,6 +423,7 @@ export default function GlobeViewer({
   onClose,
   targetAirport,
   chartOverlay,
+  chartOverlayLoading = false,
   airportCoords,
 }: GlobeViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -936,6 +949,13 @@ export default function GlobeViewer({
     <div className="absolute inset-0 z-30 bg-black">
       {/* Cesium canvas */}
       <div ref={containerRef} className="w-full h-full" />
+
+      {chartOverlayLoading && (
+        <div className="absolute left-1/2 top-4 z-40 -translate-x-1/2 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-sm text-white shadow-lg">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Preparing chart</span>
+        </div>
+      )}
 
       {/* ── Top-right controls ── */}
       <div className="absolute top-4 right-4 z-40 flex flex-col gap-2 items-end">
