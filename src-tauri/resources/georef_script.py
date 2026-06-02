@@ -8,11 +8,16 @@ CLI:
 Outputs a JSON array (one element per page) on stdout:
     [{"page": 1, "georeferenced": true, "transform": [a,b,c,d,e,f],
       "page_width": 595.28, "page_height": 841.89,
-      "rmse_meters": 45.2, "control_point_count": 7}, ...]
+      "rmse_meters": 45.2, "control_point_count": 7,
+      "high_accuracy_transform": {...}, "control_points": [...]}, ...]
 
 The transform maps mupdf coordinates (top-left origin, points)
 to Web Mercator meters: mercator_x = a*px + c*py + e
                         mercator_y = b*px + d*py + f
+
+When enough high-quality control points exist, high_accuracy_transform contains
+a weighted robust local-polynomial model plus inverse coefficients.  The affine
+transform remains present as a compatibility fallback.
 
 Control-point sources (in priority order):
   1. designated_triangle  – small filled triangles matched to DESIGNATED_POINT.csv
@@ -29,9 +34,16 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import fitz  # PyMuPDF
+
+try:
+    from pyproj import Geod
+except Exception:  # pragma: no cover - optional in development, bundled in sidecar
+    Geod = None  # type: ignore[assignment]
+
+GEOD = Geod(ellps="WGS84") if Geod is not None else None
 
 # ---------------------------------------------------------------------------
 # Types
@@ -42,12 +54,16 @@ Point = Tuple[float, float]
 EARTH_RADIUS_M = 6_378_137.0
 MIN_GEOREF_CONTROL_POINTS = 4
 MAX_GEOREF_RMSE_METERS = 300.0
+MAX_HIGH_ACCURACY_RMSE_METERS = 120.0
+MAX_HIGH_ACCURACY_RESIDUAL_METERS = 300.0
 WAYPOINT_NAME_RE = re.compile(r"[A-Z]{2}\d{3}|RW\d{2}[LRC]?|[A-Z]{3,5}")
 # Regex that matches a combined lat/lon coordinate string (starts N/S, contains E/W)
 COORD_RE = re.compile(r"^[NS].*[EW].*")
 # Labels that appear on charts but are NOT navigation waypoints and must never be matched.
 # TCH = Threshold Crossing Height (a printed altitude value annotation, not a fix name).
 IGNORED_FIX_LABELS = {"TCH"}
+MAX_VECTOR_OVERLAY_PATHS = 600
+MAX_VECTOR_OVERLAY_POINTS = 64
 
 
 @dataclass
@@ -63,10 +79,22 @@ class ControlPoint:
     source: str
     mupdf_x: float
     mupdf_y: float
+    lon: float
+    lat: float
     mercator_x: float
     mercator_y: float
     used_for_georef: bool = False
     georef_residual_meters: Optional[float] = None
+
+
+@dataclass
+class GeorefFit:
+    transform: Transform6
+    rmse_meters: float
+    max_error_meters: float
+    inliers: List[ControlPoint]
+    method: str
+    high_accuracy_transform: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -81,6 +109,13 @@ class Triangle:
     vertices_mupdf: Tuple[Point, Point, Point]
     center_mupdf: Point
     bbox_center_mupdf: Point
+
+
+@dataclass
+class VectorOverlayPath:
+    points_mupdf: List[Point]
+    line_width: float
+    stroke: Optional[Tuple[float, float, float]]
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +146,53 @@ def lonlat_to_mercator(lon: float, lat: float) -> Tuple[float, float]:
     x = EARTH_RADIUS_M * math.radians(lon)
     y = EARTH_RADIUS_M * math.log(math.tan(math.pi / 4.0 + math.radians(clamped) / 2.0))
     return x, y
+
+
+def mercator_to_lonlat(x: float, y: float) -> Tuple[float, float]:
+    lon = math.degrees(x / EARTH_RADIUS_M)
+    lat = math.degrees(2.0 * math.atan(math.exp(y / EARTH_RADIUS_M)) - math.pi / 2.0)
+    return lon, lat
+
+
+def great_circle_distance_m(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+    """Geodesic distance in meters; pyproj/Geod when available, spherical fallback otherwise."""
+    if GEOD is not None:
+        _, _, distance = GEOD.inv(lon1, lat1, lon2, lat2)
+        return abs(float(distance))
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+    a = (
+        math.sin(d_phi / 2.0) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2.0) ** 2
+    )
+    return 2.0 * EARTH_RADIUS_M * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1.0 - a)))
+
+
+def local_meters_from_lonlat(
+    lon: float,
+    lat: float,
+    origin_lon: float,
+    origin_lat: float,
+) -> Tuple[float, float]:
+    """Local tangent-plane approximation used by the polynomial model and JS viewer."""
+    cos_lat = max(math.cos(math.radians(origin_lat)), 1e-6)
+    east = math.radians(lon - origin_lon) * EARTH_RADIUS_M * cos_lat
+    north = math.radians(lat - origin_lat) * EARTH_RADIUS_M
+    return east, north
+
+
+def lonlat_from_local_meters(
+    east: float,
+    north: float,
+    origin_lon: float,
+    origin_lat: float,
+) -> Tuple[float, float]:
+    cos_lat = max(math.cos(math.radians(origin_lat)), 1e-6)
+    lon = origin_lon + math.degrees(east / (EARTH_RADIUS_M * cos_lat))
+    lat = origin_lat + math.degrees(north / EARTH_RADIUS_M)
+    return lon, lat
 
 
 # ---------------------------------------------------------------------------
@@ -547,23 +629,282 @@ def robust_affine_fit(
     return fallback_transform, fallback_inliers
 
 
-def fit_page_transform(
+def _transform_residual_geodesic(t: Transform6, p: ControlPoint) -> float:
+    mx, my = apply_transform(t, p.mupdf_x, p.mupdf_y)
+    lon, lat = mercator_to_lonlat(mx, my)
+    return great_circle_distance_m(lon, lat, p.lon, p.lat)
+
+
+def _source_weight(source: str) -> float:
+    # Symbol centers are not equally precise.  Terminal waypoint tables are the
+    # most reliable; generic fix glyphs have more false-positive risk.
+    return {
+        "waypoint_symbol": 1.35,
+        "fix_symbol": 1.0,
+        "navaid_symbol": 0.85,
+    }.get(source, 1.0)
+
+
+def _poly_terms(degree: int) -> List[Tuple[int, int]]:
+    terms: List[Tuple[int, int]] = []
+    for total in range(degree + 1):
+        for x_power in range(total, -1, -1):
+            terms.append((x_power, total - x_power))
+    return terms
+
+
+def _eval_poly_terms(terms: Sequence[Tuple[int, int]], x: float, y: float) -> List[float]:
+    return [(x ** xp) * (y ** yp) for xp, yp in terms]
+
+
+def _solve_linear_system(matrix: Sequence[Sequence[float]], values: Sequence[float]) -> List[float]:
+    n = len(values)
+    augmented = [list(row) + [value] for row, value in zip(matrix, values)]
+    for col in range(n):
+        pivot = max(range(col, n), key=lambda row: abs(augmented[row][col]))
+        augmented[col], augmented[pivot] = augmented[pivot], augmented[col]
+        pivot_value = augmented[col][col]
+        if abs(pivot_value) < 1e-12:
+            raise ValueError("degenerate polynomial control points")
+        for item in range(col, n + 1):
+            augmented[col][item] /= pivot_value
+        for row in range(n):
+            if row == col:
+                continue
+            factor = augmented[row][col]
+            if factor == 0:
+                continue
+            for item in range(col, n + 1):
+                augmented[row][item] -= factor * augmented[col][item]
+    return [augmented[row][n] for row in range(n)]
+
+
+def _weighted_poly_fit(
+    samples: Sequence[Tuple[float, float]],
+    targets: Sequence[Tuple[float, float]],
+    weights: Sequence[float],
+    terms: Sequence[Tuple[int, int]],
+) -> Tuple[List[float], List[float]]:
+    n = len(terms)
+    if len(samples) < n:
+        raise ValueError("not enough controls for polynomial")
+    ata = [[0.0 for _ in range(n)] for _ in range(n)]
+    rhs_x = [0.0 for _ in range(n)]
+    rhs_y = [0.0 for _ in range(n)]
+    for (sx, sy), (tx, ty), weight in zip(samples, targets, weights):
+        row = _eval_poly_terms(terms, sx, sy)
+        w = max(weight, 1e-6)
+        for i in range(n):
+            rhs_x[i] += w * row[i] * tx
+            rhs_y[i] += w * row[i] * ty
+            for j in range(n):
+                ata[i][j] += w * row[i] * row[j]
+    return _solve_linear_system(ata, rhs_x), _solve_linear_system(ata, rhs_y)
+
+
+def _eval_coefficients(coefficients: Sequence[float], terms: Sequence[Tuple[int, int]], x: float, y: float) -> float:
+    return sum(c * ((x ** xp) * (y ** yp)) for c, (xp, yp) in zip(coefficients, terms))
+
+
+def _dedupe_by_lowest_residual(
+    points: Sequence[ControlPoint],
+    residuals: Dict[int, float],
+) -> List[ControlPoint]:
+    best: Dict[str, ControlPoint] = {}
+    for p in points:
+        cur = best.get(p.waypoint)
+        if cur is None or residuals[id(p)] < residuals[id(cur)]:
+            best[p.waypoint] = p
+    return list(best.values())
+
+
+def _build_local_polynomial_model(
+    points: Sequence[ControlPoint],
+    degree: int,
+) -> Optional[Dict[str, Any]]:
+    terms = _poly_terms(degree)
+    if len(points) < len(terms):
+        return None
+
+    pdf_origin_x = sum(p.mupdf_x for p in points) / len(points)
+    pdf_origin_y = sum(p.mupdf_y for p in points) / len(points)
+    pdf_scale = max(
+        max(math.hypot(p.mupdf_x - pdf_origin_x, p.mupdf_y - pdf_origin_y) for p in points),
+        1.0,
+    )
+
+    origin_lon = sum(p.lon for p in points) / len(points)
+    origin_lat = sum(p.lat for p in points) / len(points)
+    local_points = [
+        local_meters_from_lonlat(p.lon, p.lat, origin_lon, origin_lat)
+        for p in points
+    ]
+    geo_scale = max(
+        max(math.hypot(east, north) for east, north in local_points),
+        1.0,
+    )
+
+    samples_pdf = [
+        ((p.mupdf_x - pdf_origin_x) / pdf_scale, (p.mupdf_y - pdf_origin_y) / pdf_scale)
+        for p in points
+    ]
+    targets_local = [(east / geo_scale, north / geo_scale) for east, north in local_points]
+    weights = [_source_weight(p.source) for p in points]
+
+    try:
+        forward_x, forward_y = _weighted_poly_fit(samples_pdf, targets_local, weights, terms)
+        inverse_x, inverse_y = _weighted_poly_fit(targets_local, samples_pdf, weights, terms)
+    except ValueError:
+        return None
+
+    return {
+        "type": "local_polynomial",
+        "degree": degree,
+        "terms": [[xp, yp] for xp, yp in terms],
+        "pdfOrigin": [pdf_origin_x, pdf_origin_y],
+        "pdfScale": pdf_scale,
+        "originLon": origin_lon,
+        "originLat": origin_lat,
+        "geoScale": geo_scale,
+        "forward": {"x": forward_x, "y": forward_y},
+        "inverse": {"x": inverse_x, "y": inverse_y},
+        "projection": {
+            "type": "local_tangent_spherical",
+            "earthRadiusM": EARTH_RADIUS_M,
+        },
+    }
+
+
+def _apply_local_polynomial_model(model: Dict[str, Any], x: float, y: float) -> Tuple[float, float]:
+    terms = [(int(a), int(b)) for a, b in model["terms"]]
+    nx = (x - float(model["pdfOrigin"][0])) / float(model["pdfScale"])
+    ny = (y - float(model["pdfOrigin"][1])) / float(model["pdfScale"])
+    ux = _eval_coefficients(model["forward"]["x"], terms, nx, ny)
+    uy = _eval_coefficients(model["forward"]["y"], terms, nx, ny)
+    east = ux * float(model["geoScale"])
+    north = uy * float(model["geoScale"])
+    return lonlat_from_local_meters(
+        east,
+        north,
+        float(model["originLon"]),
+        float(model["originLat"]),
+    )
+
+
+def _local_polynomial_residual(model: Dict[str, Any], p: ControlPoint) -> float:
+    lon, lat = _apply_local_polynomial_model(model, p.mupdf_x, p.mupdf_y)
+    return great_circle_distance_m(lon, lat, p.lon, p.lat)
+
+
+def _fit_high_accuracy_polynomial(
     controls: Sequence[ControlPoint],
-) -> Tuple[Optional[Transform6], Optional[float]]:
+    seed_inliers: Sequence[ControlPoint],
+) -> Optional[Tuple[Dict[str, Any], List[ControlPoint], float, float]]:
+    """Weighted robust local polynomial fit with inverse coefficients for the UI."""
+    candidates = list(controls)
+    seed = _unique_by_waypoint(seed_inliers)
+    if len(seed) < MIN_GEOREF_CONTROL_POINTS:
+        return None
+
+    degrees = [1]
+    if len(seed) >= 8:
+        degrees.append(2)
+    if len(seed) >= 14:
+        degrees.append(3)
+
+    best: Optional[Tuple[Dict[str, Any], List[ControlPoint], float, float]] = None
+    best_score = math.inf
+
+    for degree in degrees:
+        terms = _poly_terms(degree)
+        if len(seed) < len(terms):
+            continue
+        inliers = seed
+        model: Optional[Dict[str, Any]] = None
+        for _ in range(5):
+            model = _build_local_polynomial_model(inliers, degree)
+            if model is None:
+                break
+            residuals = {id(p): _local_polynomial_residual(model, p) for p in candidates}
+            raw = [p for p in candidates if residuals[id(p)] <= MAX_HIGH_ACCURACY_RESIDUAL_METERS]
+            next_inliers = _dedupe_by_lowest_residual(raw, residuals)
+            if len(next_inliers) < max(MIN_GEOREF_CONTROL_POINTS, len(terms)):
+                break
+            if {id(p) for p in next_inliers} == {id(p) for p in inliers}:
+                inliers = next_inliers
+                break
+            inliers = next_inliers
+
+        if model is None or len(inliers) < max(MIN_GEOREF_CONTROL_POINTS, len(terms)):
+            continue
+
+        model = _build_local_polynomial_model(inliers, degree)
+        if model is None:
+            continue
+        finals = [_local_polynomial_residual(model, p) for p in inliers]
+        rmse = math.sqrt(sum(v * v for v in finals) / len(finals))
+        max_error = max(finals)
+        if rmse > MAX_HIGH_ACCURACY_RMSE_METERS or max_error > MAX_HIGH_ACCURACY_RESIDUAL_METERS:
+            continue
+
+        # Prefer lower error, but apply a small complexity penalty so a higher
+        # order polynomial must earn its keep instead of merely overfitting.
+        score = rmse * (1.0 + degree * 0.035) - len(inliers) * 0.5
+        if best is None or score < best_score:
+            best = (model, inliers, rmse, max_error)
+            best_score = score
+
+    if best is None:
+        return None
+    model, inliers, rmse, max_error = best
+    model["rmseMeters"] = rmse
+    model["maxErrorMeters"] = max_error
+    model["inlierCount"] = len(inliers)
+    model["controlPointCount"] = len(candidates)
+    return model, inliers, rmse, max_error
+
+
+def fit_page_georef(
+    controls: Sequence[ControlPoint],
+) -> Optional[GeorefFit]:
     if len(controls) < MIN_GEOREF_CONTROL_POINTS:
-        return None, None
+        return None
     transform, inliers = robust_reflected_similarity_fit(controls)
 
     def score(
         candidate_transform: Optional[Transform6],
         candidate_inliers: Sequence[ControlPoint],
-    ) -> Optional[Tuple[Transform6, List[ControlPoint], float]]:
+    ) -> Optional[Tuple[Transform6, List[ControlPoint], float, float]]:
         if candidate_transform is None or len(candidate_inliers) < MIN_GEOREF_CONTROL_POINTS:
             return None
-        squared = sum(_residual(candidate_transform, p) ** 2 for p in candidate_inliers)
-        return candidate_transform, list(candidate_inliers), math.sqrt(squared / len(candidate_inliers))
+        residuals = [_transform_residual_geodesic(candidate_transform, p) for p in candidate_inliers]
+        squared = sum(v * v for v in residuals)
+        return (
+            candidate_transform,
+            list(candidate_inliers),
+            math.sqrt(squared / len(candidate_inliers)),
+            max(residuals),
+        )
 
     best = score(transform, inliers)
+    best_method = "reflected_similarity"
+
+    def better_page_candidate(
+        candidate: Tuple[Transform6, List[ControlPoint], float, float],
+        current: Optional[Tuple[Transform6, List[ControlPoint], float, float]],
+    ) -> bool:
+        if current is None:
+            return True
+        candidate_ok = candidate[2] <= MAX_GEOREF_RMSE_METERS
+        current_ok = current[2] <= MAX_GEOREF_RMSE_METERS
+        if candidate_ok != current_ok:
+            return candidate_ok
+        if candidate_ok:
+            if candidate[2] < current[2] * 0.95:
+                return True
+            return len(candidate[1]) > len(current[1]) and candidate[2] <= current[2] * 1.10
+        return candidate[2] < current[2]
+
     # Also try affine even when similarity is "acceptable".  Terminal charts are
     # often projected rather than purely scaled/rotated, and a correct extra
     # control near a holding pattern can expose the small anisotropy.  Require at
@@ -575,23 +916,335 @@ def fit_page_transform(
         if (
             affine_best is not None
             and len(affine_best[1]) >= 4
-            and (
-                best is None
-                or len(affine_best[1]) > len(best[1])
-                or (len(affine_best[1]) == len(best[1]) and affine_best[2] < best[2] * 0.95)
-            )
+            and better_page_candidate(affine_best, best)
         ):
             best = affine_best
+            best_method = "affine"
 
     if best is None or best[2] > MAX_GEOREF_RMSE_METERS:
-        return None, None
+        return None
 
-    transform, inliers, rmse = best
+    transform, inliers, rmse, max_error = best
+    method = best_method
+    high_accuracy = _fit_high_accuracy_polynomial(controls, inliers)
+    high_accuracy_transform: Optional[Dict[str, Any]] = None
+    if high_accuracy is not None:
+        high_accuracy_transform, inliers, rmse, max_error = high_accuracy
+        method = f"local_polynomial_{high_accuracy_transform['degree']}"
     inlier_ids = {id(p) for p in inliers}
     for p in controls:
-        p.georef_residual_meters = _residual(transform, p)
+        if high_accuracy_transform is not None:
+            p.georef_residual_meters = _local_polynomial_residual(high_accuracy_transform, p)
+        else:
+            p.georef_residual_meters = _transform_residual_geodesic(transform, p)
         p.used_for_georef = id(p) in inlier_ids
-    return transform, rmse
+    return GeorefFit(
+        transform=transform,
+        rmse_meters=rmse,
+        max_error_meters=max_error,
+        inliers=list(inliers),
+        method=method,
+        high_accuracy_transform=high_accuracy_transform,
+    )
+
+
+def fit_page_transform(
+    controls: Sequence[ControlPoint],
+) -> Tuple[Optional[Transform6], Optional[float]]:
+    fit = fit_page_georef(controls)
+    if fit is None:
+        return None, None
+    return fit.transform, fit.rmse_meters
+
+
+# ---------------------------------------------------------------------------
+# Vector overlay extraction
+# ---------------------------------------------------------------------------
+
+def _clamp(value: float, min_value: float, max_value: float) -> float:
+    return min(max(value, min_value), max_value)
+
+
+def _cross(o: Point, a: Point, b: Point) -> float:
+    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+
+def _convex_hull(points: Sequence[Point]) -> List[Point]:
+    sorted_points = sorted(set(points))
+    if len(sorted_points) <= 1:
+        return list(sorted_points)
+
+    lower: List[Point] = []
+    for point in sorted_points:
+        while len(lower) >= 2 and _cross(lower[-2], lower[-1], point) <= 0:
+            lower.pop()
+        lower.append(point)
+
+    upper: List[Point] = []
+    for point in reversed(sorted_points):
+        while len(upper) >= 2 and _cross(upper[-2], upper[-1], point) <= 0:
+            upper.pop()
+        upper.append(point)
+
+    return lower[:-1] + upper[:-1]
+
+
+def _expand_polygon(
+    polygon: Sequence[Point],
+    page_width: float,
+    page_height: float,
+    margin: float,
+) -> List[Point]:
+    center_x = sum(p[0] for p in polygon) / len(polygon)
+    center_y = sum(p[1] for p in polygon) / len(polygon)
+    expanded: List[Point] = []
+    for x, y in polygon:
+        dx = x - center_x
+        dy = y - center_y
+        length = math.hypot(dx, dy) or 1.0
+        expanded.append((
+            _clamp(x + (dx / length) * margin, 0.0, page_width),
+            _clamp(y + (dy / length) * margin, 0.0, page_height),
+        ))
+    return expanded
+
+
+def _point_in_polygon(point: Point, polygon: Sequence[Point]) -> bool:
+    x, y = point
+    inside = False
+    j = len(polygon) - 1
+    for i, (xi, yi) in enumerate(polygon):
+        xj, yj = polygon[j]
+        crosses = (yi > y) != (yj > y)
+        if crosses:
+            x_at_y = ((xj - xi) * (y - yi) / ((yj - yi) or 1e-12)) + xi
+            if x < x_at_y:
+                inside = not inside
+        j = i
+    return inside
+
+
+def _used_control_polygon(
+    controls: Sequence[ControlPoint],
+    page_width: float,
+    page_height: float,
+) -> Optional[List[Point]]:
+    used = [(p.mupdf_x, p.mupdf_y) for p in controls if p.used_for_georef]
+    if len(used) < MIN_GEOREF_CONTROL_POINTS:
+        return None
+
+    hull = _convex_hull(used)
+    if len(hull) < 3:
+        return None
+
+    xs = [p[0] for p in used]
+    ys = [p[1] for p in used]
+    span_x = max(max(xs) - min(xs), 1.0)
+    span_y = max(max(ys) - min(ys), 1.0)
+    # Route strokes and arrow shafts are often offset well away from the
+    # waypoint label/symbol centers used as controls.  Use a generous plan-view
+    # hull so we keep the actual procedure geometry without falling back to the
+    # full document plate.
+    margin = _clamp(min(span_x, span_y) * 0.40, 55.0, 130.0)
+    return _expand_polygon(hull, page_width, page_height, margin)
+
+
+def _bounds(points: Sequence[Point]) -> Tuple[float, float, float, float]:
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _polygon_area(points: Sequence[Point]) -> float:
+    area = 0.0
+    for i, (x1, y1) in enumerate(points):
+        x2, y2 = points[(i + 1) % len(points)]
+        area += x1 * y2 - x2 * y1
+    return abs(area) / 2.0
+
+
+def _cubic_bezier(p0: Point, p1: Point, p2: Point, p3: Point, t: float) -> Point:
+    inv = 1.0 - t
+    x = (
+        inv ** 3 * p0[0]
+        + 3.0 * inv ** 2 * t * p1[0]
+        + 3.0 * inv * t ** 2 * p2[0]
+        + t ** 3 * p3[0]
+    )
+    y = (
+        inv ** 3 * p0[1]
+        + 3.0 * inv ** 2 * t * p1[1]
+        + 3.0 * inv * t ** 2 * p2[1]
+        + t ** 3 * p3[1]
+    )
+    return x, y
+
+
+def _append_point(points: List[Point], point: Point) -> None:
+    if not points or math.hypot(points[-1][0] - point[0], points[-1][1] - point[1]) > 0.35:
+        points.append(point)
+
+
+def _append_segment_points(points: List[Point], start: Point, end: Point, max_step: float = 18.0) -> None:
+    _append_point(points, start)
+    distance = math.hypot(end[0] - start[0], end[1] - start[1])
+    steps = max(1, math.ceil(distance / max_step))
+    for step in range(1, steps + 1):
+        fraction = step / steps
+        _append_point(points, (
+            start[0] + (end[0] - start[0]) * fraction,
+            start[1] + (end[1] - start[1]) * fraction,
+        ))
+
+
+def _drawing_to_points(drawing: Dict[str, Any]) -> List[Point]:
+    points: List[Point] = []
+    current: Optional[Point] = None
+    for item in drawing.get("items", []):
+        if not item:
+            continue
+        operator = item[0]
+        if operator == "l" and len(item) >= 3:
+            p0 = (float(item[1].x), float(item[1].y))
+            p1 = (float(item[2].x), float(item[2].y))
+            _append_segment_points(points, p0, p1)
+            current = p1
+        elif operator == "c" and len(item) >= 4:
+            # PyMuPDF has used both current-point-implied and explicit-start
+            # curve tuples across releases.  Prefer the current point when it is
+            # available; otherwise treat the first tuple point as the start.
+            if len(item) >= 5:
+                p0 = current if current is not None else (float(item[1].x), float(item[1].y))
+                control_offset = 1 if current is not None else 2
+                p1 = (float(item[control_offset].x), float(item[control_offset].y))
+                p2 = (float(item[control_offset + 1].x), float(item[control_offset + 1].y))
+                p3 = (float(item[control_offset + 2].x), float(item[control_offset + 2].y))
+            else:
+                p0 = current if current is not None else (float(item[1].x), float(item[1].y))
+                p1 = (float(item[1].x), float(item[1].y))
+                p2 = (float(item[2].x), float(item[2].y))
+                p3 = (float(item[3].x), float(item[3].y))
+            _append_point(points, p0)
+            for step in range(1, 17):
+                _append_point(points, _cubic_bezier(p0, p1, p2, p3, step / 16.0))
+            current = p3
+        elif operator == "re" and len(item) >= 2:
+            rect = item[1]
+            rect_points = [
+                (float(rect.x0), float(rect.y0)),
+                (float(rect.x1), float(rect.y0)),
+                (float(rect.x1), float(rect.y1)),
+                (float(rect.x0), float(rect.y1)),
+                (float(rect.x0), float(rect.y0)),
+            ]
+            for index in range(1, len(rect_points)):
+                _append_segment_points(points, rect_points[index - 1], rect_points[index])
+            current = rect_points[-1]
+        elif operator == "m" and len(item) >= 2:
+            current = (float(item[1].x), float(item[1].y))
+            _append_point(points, current)
+        elif operator == "h" and current is not None:
+            _append_point(points, points[0] if points else current)
+    return points
+
+
+def _downsample_points(points: Sequence[Point], max_points: int) -> List[Point]:
+    if len(points) <= max_points:
+        return list(points)
+    sampled: List[Point] = []
+    for index in range(max_points):
+        source_index = round(index * (len(points) - 1) / (max_points - 1))
+        sampled.append(points[source_index])
+    return sampled
+
+
+def _is_dark_stroke(stroke: Optional[Sequence[float]]) -> bool:
+    if stroke is None:
+        return True
+    if len(stroke) < 3:
+        return True
+    return sum(float(c) for c in stroke[:3]) / 3.0 < 0.72
+
+
+def _is_table_like_rect(points: Sequence[Point], page_width: float, page_height: float) -> bool:
+    if len(points) < 4:
+        return False
+    min_x, min_y, max_x, max_y = _bounds(points)
+    width = max_x - min_x
+    height = max_y - min_y
+    if len(points) <= 5 and width > 35.0 and height > 12.0:
+        area = _polygon_area(points)
+        return area > 0.8 * width * height
+    return False
+
+
+def extract_vector_overlay_paths(
+    page: fitz.Page,
+    controls: Sequence[ControlPoint],
+) -> List[VectorOverlayPath]:
+    """Extract georeferenceable procedure strokes from the PDF plan-view area.
+
+    This deliberately excludes text and filled waypoint symbols.  The UI draws
+    labels and fix/navaid symbols from the validated control points instead.
+    """
+    page_width = float(page.rect.width)
+    page_height = float(page.rect.height)
+    polygon = _used_control_polygon(controls, page_width, page_height)
+    if polygon is None:
+        return []
+
+    paths: List[VectorOverlayPath] = []
+    for drawing in page.get_drawings():
+        stroke = drawing.get("color")
+        fill = drawing.get("fill")
+        line_width = float(drawing.get("width") or 1.0)
+        if fill is not None and stroke is None:
+            continue
+        if not _is_dark_stroke(stroke):
+            continue
+
+        points = _drawing_to_points(drawing)
+        if len(points) < 2:
+            continue
+        length = sum(
+            math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1])
+            for i in range(1, len(points))
+        )
+        if length < 30.0:
+            continue
+        min_x, min_y, max_x, max_y = _bounds(points)
+        if length > 80.0 and (
+            (max_x - min_x <= 1.0 and (min_x <= 25.0 or max_x >= page_width - 25.0))
+            or (max_y - min_y <= 1.0 and (min_y <= 55.0 or max_y >= page_height - 25.0))
+        ):
+            continue
+        if _is_table_like_rect(points, page_width, page_height):
+            continue
+
+        containment_samples = list(points)
+        for index in range(1, len(points)):
+            x0, y0 = points[index - 1]
+            x1, y1 = points[index]
+            for fraction in (0.25, 0.5, 0.75):
+                containment_samples.append((
+                    x0 + (x1 - x0) * fraction,
+                    y0 + (y1 - y0) * fraction,
+                ))
+
+        inside_count = sum(
+            1 for point in containment_samples if _point_in_polygon(point, polygon)
+        )
+        if inside_count == 0:
+            continue
+
+        paths.append(VectorOverlayPath(
+            points_mupdf=_downsample_points(points, MAX_VECTOR_OVERLAY_POINTS),
+            line_width=line_width,
+            stroke=tuple(float(c) for c in stroke[:3]) if stroke and len(stroke) >= 3 else None,
+        ))
+        if len(paths) >= MAX_VECTOR_OVERLAY_PATHS:
+            break
+    return paths
 
 
 # ---------------------------------------------------------------------------
@@ -867,6 +1520,8 @@ def extract_all_fix_controls(
                 source="fix_symbol",
                 mupdf_x=sym.center_mupdf[0],
                 mupdf_y=sym.center_mupdf[1],
+                lon=location.lon,
+                lat=location.lat,
                 mercator_x=mx,
                 mercator_y=my,
             )
@@ -920,6 +1575,8 @@ def extract_navaid_controls(
                 source="navaid_symbol",
                 mupdf_x=sym.center_mupdf[0],
                 mupdf_y=sym.center_mupdf[1],
+                lon=location.lon,
+                lat=location.lat,
                 mercator_x=mx,
                 mercator_y=my,
             )
@@ -976,6 +1633,8 @@ def extract_waypoint_symbol_controls(
                 source="waypoint_symbol",
                 mupdf_x=sym.center_mupdf[0],
                 mupdf_y=sym.center_mupdf[1],
+                lon=location.lon,
+                lat=location.lat,
                 mercator_x=mx,
                 mercator_y=my,
             )
@@ -1034,16 +1693,51 @@ def process_pdf(
             extra = extract_navaid_controls(page, navaid, existing)
             controls.extend(extra)
 
-            transform, rmse = fit_page_transform(controls)
+            fit = fit_page_georef(controls)
+            transform = fit.transform if fit is not None else None
+            rmse = fit.rmse_meters if fit is not None else None
+            vector_paths = extract_vector_overlay_paths(page, controls) if fit is not None else []
 
             results.append({
                 "page": page_index,
                 "georeferenced": transform is not None,
                 "transform": list(transform) if transform is not None else None,
+                "transform_type": fit.method if fit is not None else None,
+                "high_accuracy_transform": fit.high_accuracy_transform if fit is not None else None,
                 "page_width": page_width,
                 "page_height": page_height,
                 "rmse_meters": rmse,
+                "max_error_meters": fit.max_error_meters if fit is not None else None,
+                "inlier_count": len(fit.inliers) if fit is not None else 0,
                 "control_point_count": len(controls),
+                "control_points": [
+                    {
+                        "waypoint": p.waypoint,
+                        "source": p.source,
+                        "mupdfX": p.mupdf_x,
+                        "mupdfY": p.mupdf_y,
+                        "lon": p.lon,
+                        "lat": p.lat,
+                        "used": p.used_for_georef,
+                        "residualMeters": p.georef_residual_meters,
+                    }
+                    for p in sorted(
+                        controls,
+                        key=lambda p: (
+                            not p.used_for_georef,
+                            p.georef_residual_meters is None,
+                            p.georef_residual_meters or math.inf,
+                        ),
+                    )
+                ],
+                "vector_paths": [
+                    {
+                        "points": [[x, y] for x, y in path.points_mupdf],
+                        "lineWidth": path.line_width,
+                        "stroke": list(path.stroke) if path.stroke is not None else None,
+                    }
+                    for path in vector_paths
+                ],
             })
 
     return results

@@ -1414,9 +1414,7 @@ export default function PDFViewer({
             {(() => {
               if (!ownshipPosition || !georefPage?.transform || !pageSize || !visibleScale || rotation !== 0) return null;
               const pdfXY = worldToPdfPixels(
-                georefPage.transform,
-                georefPage.pageWidth,
-                georefPage.pageHeight,
+                georefPage,
                 ownshipPosition.lon,
                 ownshipPosition.lat
               );

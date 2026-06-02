@@ -135,6 +135,7 @@ function main() {
 
   const python = findPython();
   requirePythonModule(python, "fitz", "PyMuPDF");
+  requirePythonModule(python, "pyproj");
   requirePythonModule(python, "PyInstaller");
 
   const pyinstallerArgs = [
@@ -153,6 +154,8 @@ function main() {
     join(workRoot, targetTriple, "spec"),
     "--collect-all",
     "fitz",
+    "--collect-all",
+    "pyproj",
   ];
 
   if (hasPythonModule(python, "pymupdf")) {

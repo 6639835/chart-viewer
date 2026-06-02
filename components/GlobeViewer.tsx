@@ -11,7 +11,7 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import type { ChartCorners } from "@/types/georef";
+import type { ChartCorners, ChartProcedureOverlay } from "@/types/georef";
 import type { AirportCoord } from "@/lib/tauriClient";
 import type { OwnshipPosition } from "@/lib/gdl90";
 
@@ -19,7 +19,7 @@ export interface ChartOverlayData {
   chartId: string;
   pageNumber: number;
   corners: ChartCorners;
-  imageUrl: string;
+  procedureOverlay: ChartProcedureOverlay;
 }
 
 interface GlobeViewerProps {
@@ -63,12 +63,18 @@ type GlobeViewerInstance = {
     getPickRay: (
       windowPosition: import("cesium").Cartesian2
     ) => import("cesium").Ray | undefined;
+    pickEllipsoid: (
+      windowPosition: import("cesium").Cartesian2,
+      ellipsoid?: import("cesium").Ellipsoid
+    ) => import("cesium").Cartesian3 | undefined;
     setView: (options: {
       destination?: import("cesium").Cartesian3;
       orientation?: { heading: number; pitch: number; roll: number };
     }) => void;
     zoomIn: (amount?: number) => void;
     zoomOut: (amount?: number) => void;
+    moveRight: (amount?: number) => void;
+    moveUp: (amount?: number) => void;
     rotateLeft: (angle?: number) => void;
     rotateRight: (angle?: number) => void;
     rotateUp: (angle?: number) => void;
@@ -77,6 +83,7 @@ type GlobeViewerInstance = {
   scene?: {
     canvas: HTMLCanvasElement;
     globe: {
+      ellipsoid: import("cesium").Ellipsoid;
       pick: (
         ray: import("cesium").Ray,
         scene: unknown
@@ -87,7 +94,6 @@ type GlobeViewerInstance = {
 };
 
 const WHEEL_PINCH_ZOOM_SENSITIVITY = 0.006;
-const WHEEL_PAN_SENSITIVITY = 0.0012;
 const MIN_CAMERA_HEIGHT_METERS = 250;
 const MAX_CAMERA_HEIGHT_METERS = 25_000_000;
 const AIRPORT_HOME_HEIGHT_METERS = 20_000;
@@ -102,7 +108,9 @@ const CURSOR_STATUS_UPDATE_MS = 80;
 const ALTITUDE_UPDATE_RATIO = 0.01;
 const HEADING_UPDATE_DEGREES = 0.5;
 const CURSOR_UPDATE_DEGREES = 0.00005;
-const CHART_OVERLAY_HEIGHT_METERS = 25;
+const MAP_PLANE_HEIGHT_METERS = 0;
+const CHART_OVERLAY_HEIGHT_METERS = MAP_PLANE_HEIGHT_METERS;
+const AIRCRAFT_MARKER_HEIGHT_METERS = MAP_PLANE_HEIGHT_METERS;
 
 interface ClientPoint {
   clientX: number;
@@ -137,13 +145,6 @@ function normalizeGlobeCamera(
       position.latitude,
       clampCameraHeight(height)
     ),
-    orientation: {
-      heading: Number.isFinite(viewer.camera.heading)
-        ? viewer.camera.heading
-        : 0,
-      pitch: Cesium.Math.toRadians(-90),
-      roll: 0,
-    },
   });
 }
 
@@ -161,6 +162,14 @@ function getGlobeCartographicAtClientPoint(
     clientPoint.clientX - canvasRect.left,
     clientPoint.clientY - canvasRect.top
   );
+  const ellipsoidPosition = viewer.camera.pickEllipsoid(
+    canvasPoint,
+    viewer.scene.globe.ellipsoid
+  );
+  if (ellipsoidPosition) {
+    return Cesium.Cartographic.fromCartesian(ellipsoidPosition);
+  }
+
   const ray = viewer.camera.getPickRay(canvasPoint);
   if (!ray) {
     return null;
@@ -209,13 +218,6 @@ function applyCursorZoomAnchor(
       nextLatitude,
       clampCameraHeight(height)
     ),
-    orientation: {
-      heading: Number.isFinite(viewer.camera.heading)
-        ? viewer.camera.heading
-        : 0,
-      pitch: Cesium.Math.toRadians(-90),
-      roll: 0,
-    },
   });
 }
 
@@ -233,7 +235,7 @@ function flyToAirportHome(
     camera: {
       flyTo: (options: {
         destination: import("cesium").Cartesian3;
-        orientation: { heading: number; pitch: number; roll: number };
+        orientation?: { heading: number; pitch: number; roll: number };
         duration?: number;
       }) => void;
     };
@@ -248,11 +250,6 @@ function flyToAirportHome(
       coords[1],
       AIRPORT_HOME_HEIGHT_METERS
     ),
-    orientation: {
-      heading: 0,
-      pitch: Cesium.Math.toRadians(-90),
-      roll: 0,
-    },
     duration,
   });
 }
@@ -262,7 +259,7 @@ function flyToDefaultHome(
     camera: {
       flyTo: (options: {
         destination: import("cesium").Cartesian3;
-        orientation: { heading: number; pitch: number; roll: number };
+        orientation?: { heading: number; pitch: number; roll: number };
         duration?: number;
       }) => void;
     };
@@ -272,11 +269,6 @@ function flyToDefaultHome(
 ) {
   viewer.camera.flyTo({
     destination: Cesium.Cartesian3.fromDegrees(105, 35, 12_000_000),
-    orientation: {
-      heading: 0,
-      pitch: Cesium.Math.toRadians(-90),
-      roll: 0,
-    },
     duration,
   });
 }
@@ -295,9 +287,12 @@ function getChartOverlayRectangle(
 }
 
 function getChartOverlayKey(chartOverlay: ChartOverlayData) {
-  const { corners, imageUrl } = chartOverlay;
+  const { corners, procedureOverlay } = chartOverlay;
+  const firstPoint = procedureOverlay.points[0];
+  const lastPoint = procedureOverlay.points.at(-1);
+  const firstPath = procedureOverlay.paths[0];
+  const lastPath = procedureOverlay.paths.at(-1);
   return [
-    imageUrl,
     corners.topLeft.lon,
     corners.topLeft.lat,
     corners.topRight.lon,
@@ -306,103 +301,150 @@ function getChartOverlayKey(chartOverlay: ChartOverlayData) {
     corners.bottomRight.lat,
     corners.bottomLeft.lon,
     corners.bottomLeft.lat,
+    procedureOverlay.points.length,
+    procedureOverlay.paths.length,
+    firstPoint?.waypoint,
+    firstPoint?.lon,
+    lastPoint?.waypoint,
+    lastPoint?.lon,
+    firstPath?.positions[0]?.lon,
+    lastPath?.positions.at(-1)?.lon,
   ].join("|");
 }
 
-function getChartOverlayPositions(
+function pathPositionsToCartesian(
   Cesium: typeof import("cesium"),
-  corners: ChartCorners
+  positions: { lon: number; lat: number }[]
 ) {
-  return [
-    corners.topLeft,
-    corners.topRight,
-    corners.bottomRight,
-    corners.bottomLeft,
-  ].map((corner) =>
+  return positions.map((position) =>
     Cesium.Cartesian3.fromDegrees(
-      corner.lon,
-      corner.lat,
+      position.lon,
+      position.lat,
       CHART_OVERLAY_HEIGHT_METERS
     )
   );
 }
 
-function getChartOverlayTextureCoordinates(Cesium: typeof import("cesium")) {
-  // Cesium uploads Image material textures with flipY enabled, so UV(0,0)
-  // samples the source image's top-left pixel. Keep the PDF canvas corners in
-  // top-left PDF order: TL, TR, BR, BL.
-  return new Cesium.PolygonHierarchy([
-    new Cesium.Cartesian2(0, 0),
-    new Cesium.Cartesian2(1, 0),
-    new Cesium.Cartesian2(1, 1),
-    new Cesium.Cartesian2(0, 1),
-  ] as unknown as import("cesium").Cartesian3[]);
-}
-
-function createChartOverlayMaterial(
-  Cesium: typeof import("cesium"),
-  imageUrl: string,
-  alpha: number
-) {
-  return new Cesium.Material({
-    translucent: true,
-    minificationFilter: Cesium.TextureMinificationFilter.LINEAR,
-    magnificationFilter: Cesium.TextureMagnificationFilter.LINEAR,
-    fabric: {
-      type: Cesium.Material.ImageType,
-      uniforms: {
-        image: imageUrl,
-        repeat: new Cesium.Cartesian2(1, 1),
-        color: Cesium.Color.WHITE.withAlpha(alpha),
-      },
-    },
-  });
-}
-
-function createChartOverlayPrimitive(
+function createChartOverlayDataSource(
   Cesium: typeof import("cesium"),
   chartOverlay: ChartOverlayData,
   alpha: number
 ) {
-  const positions = getChartOverlayPositions(Cesium, chartOverlay.corners);
-  const geometry = new Cesium.PolygonGeometry({
-    polygonHierarchy: new Cesium.PolygonHierarchy(positions),
-    textureCoordinates: getChartOverlayTextureCoordinates(Cesium),
-    vertexFormat: Cesium.EllipsoidSurfaceAppearance.VERTEX_FORMAT,
-    perPositionHeight: true,
-    arcType: Cesium.ArcType.RHUMB,
-  });
+  const dataSource = new Cesium.CustomDataSource("procedure-overlay");
+  const lineAlpha = clamp(alpha, 0.15, 1);
+  const labelAlpha = clamp(alpha * 1.1, 0.2, 1);
 
-  return new Cesium.Primitive({
-    geometryInstances: new Cesium.GeometryInstance({ geometry }),
-    appearance: new Cesium.EllipsoidSurfaceAppearance({
-      aboveGround: true,
-      flat: true,
-      translucent: true,
-      material: createChartOverlayMaterial(
-        Cesium,
-        chartOverlay.imageUrl,
-        alpha
+  for (const path of chartOverlay.procedureOverlay.paths) {
+    const positions = pathPositionsToCartesian(Cesium, path.positions);
+    if (positions.length < 2) continue;
+    const width = clamp(path.lineWidth * 1.6, 2, 7);
+    dataSource.entities.add({
+      name: "procedure-outline",
+      polyline: {
+        positions,
+        width: width + 3,
+        arcType: Cesium.ArcType.RHUMB,
+        clampToGround: false,
+        material: new Cesium.PolylineOutlineMaterialProperty({
+          color: Cesium.Color.WHITE.withAlpha(lineAlpha * 0.65),
+          outlineColor: Cesium.Color.WHITE.withAlpha(lineAlpha * 0.2),
+          outlineWidth: 1,
+        }),
+      },
+    });
+    dataSource.entities.add({
+      name: "procedure-line",
+      polyline: {
+        positions,
+        width,
+        arcType: Cesium.ArcType.RHUMB,
+        clampToGround: false,
+        material: new Cesium.ColorMaterialProperty(
+          Cesium.Color.BLACK.withAlpha(lineAlpha)
+        ),
+      },
+    });
+  }
+
+  for (const point of chartOverlay.procedureOverlay.points) {
+    const isNavaid = point.source === "navaid_symbol";
+    dataSource.entities.add({
+      name: isNavaid ? "procedure-navaid" : "procedure-fix",
+      position: Cesium.Cartesian3.fromDegrees(
+        point.lon,
+        point.lat,
+        CHART_OVERLAY_HEIGHT_METERS
       ),
-    }),
-    asynchronous: false,
-  });
+      point: {
+        pixelSize: isNavaid ? 10 : 8,
+        color: (isNavaid ? Cesium.Color.SKYBLUE : Cesium.Color.WHITE).withAlpha(
+          labelAlpha
+        ),
+        outlineColor: Cesium.Color.BLACK.withAlpha(labelAlpha),
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+      label: {
+        text: point.waypoint,
+        font: "bold 13px sans-serif",
+        fillColor: Cesium.Color.BLACK.withAlpha(labelAlpha),
+        outlineColor: Cesium.Color.WHITE.withAlpha(labelAlpha),
+        outlineWidth: 4,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(10, -12),
+        verticalOrigin: Cesium.VerticalOrigin.CENTER,
+        horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+        heightReference: Cesium.HeightReference.NONE,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+    });
+  }
+
+  return dataSource;
 }
 
-function setChartOverlayPrimitiveAlpha(
+function setChartOverlayDataSourceAlpha(
   Cesium: typeof import("cesium"),
-  primitive: unknown,
+  dataSource: unknown,
   alpha: number
 ) {
-  const material = (
-    primitive as {
-      appearance?: {
-        material?: { uniforms?: { color?: import("cesium").Color } };
-      };
+  const ds = dataSource as {
+    entities?: {
+      values?: Array<{
+        name?: string;
+        polyline?: { material?: unknown };
+        point?: { color?: unknown; outlineColor?: unknown };
+        label?: { fillColor?: unknown; outlineColor?: unknown };
+      }>;
+    };
+  };
+  const lineAlpha = clamp(alpha, 0.15, 1);
+  const labelAlpha = clamp(alpha * 1.1, 0.2, 1);
+  for (const entity of ds.entities?.values ?? []) {
+    if (entity.polyline) {
+      if (entity.name === "procedure-outline") {
+        entity.polyline.material = new Cesium.PolylineOutlineMaterialProperty({
+          color: Cesium.Color.WHITE.withAlpha(lineAlpha * 0.65),
+          outlineColor: Cesium.Color.WHITE.withAlpha(lineAlpha * 0.2),
+          outlineWidth: 1,
+        });
+      } else {
+        entity.polyline.material = new Cesium.ColorMaterialProperty(
+          Cesium.Color.BLACK.withAlpha(lineAlpha)
+        );
+      }
     }
-  ).appearance?.material;
-  if (!material?.uniforms) return;
-  material.uniforms.color = Cesium.Color.WHITE.withAlpha(alpha);
+    if (entity.point) {
+      entity.point.color = (
+        entity.name === "procedure-navaid" ? Cesium.Color.SKYBLUE : Cesium.Color.WHITE
+      ).withAlpha(labelAlpha);
+      entity.point.outlineColor = Cesium.Color.BLACK.withAlpha(labelAlpha);
+    }
+    if (entity.label) {
+      entity.label.fillColor = Cesium.Color.BLACK.withAlpha(labelAlpha);
+      entity.label.outlineColor = Cesium.Color.WHITE.withAlpha(labelAlpha);
+    }
+  }
 }
 
 function flyToChartOverlay(
@@ -430,7 +472,7 @@ function flyToOwnship(
       positionCartographic: { height: number };
       flyTo: (options: {
         destination: import("cesium").Cartesian3;
-        orientation: { heading: number; pitch: number; roll: number };
+        orientation?: { heading: number; pitch: number; roll: number };
         duration?: number;
       }) => void;
     };
@@ -454,11 +496,6 @@ function flyToOwnship(
       ownshipPosition.lat,
       centerHeight
     ),
-    orientation: {
-      heading: 0,
-      pitch: Cesium.Math.toRadians(-90),
-      roll: 0,
-    },
     duration,
   });
 }
@@ -564,16 +601,13 @@ function panGlobeByWheel(
   normalizeGlobeCamera(viewer, Cesium);
 
   const height = clampCameraHeight(getCameraHeight(viewer));
-  const rotationScale =
-    (height * WHEEL_PAN_SENSITIVITY) /
-    (Cesium.Ellipsoid.WGS84.maximumRadius + height);
-  const horizontal = clamp(event.deltaX, -120, 120) * rotationScale;
-  const vertical = clamp(event.deltaY, -120, 120) * rotationScale;
+  const canvasHeight = Math.max(viewer.scene?.canvas.clientHeight ?? 1, 1);
+  const metersPerPixel = height / canvasHeight;
+  const horizontal = clamp(event.deltaX, -120, 120) * metersPerPixel;
+  const vertical = clamp(event.deltaY, -120, 120) * metersPerPixel;
 
-  if (horizontal > 0) viewer.camera.rotateRight(Math.abs(horizontal));
-  if (horizontal < 0) viewer.camera.rotateLeft(Math.abs(horizontal));
-  if (vertical > 0) viewer.camera.rotateUp(Math.abs(vertical));
-  if (vertical < 0) viewer.camera.rotateDown(Math.abs(vertical));
+  if (horizontal !== 0) viewer.camera.moveRight(horizontal);
+  if (vertical !== 0) viewer.camera.moveUp(-vertical);
 
   normalizeGlobeCamera(viewer, Cesium, height);
 
@@ -779,7 +813,9 @@ export default function GlobeViewer({
         shadows: false,
         terrainShadows: Cesium.ShadowMode.DISABLED,
         orderIndependentTranslucency: false,
-        scene3DOnly: true,
+        sceneMode: Cesium.SceneMode.SCENE2D,
+        scene3DOnly: false,
+        mapProjection: new Cesium.WebMercatorProjection(),
         requestRenderMode: true,
         maximumRenderTimeChange: Number.POSITIVE_INFINITY,
         msaaSamples: 1,
@@ -796,16 +832,16 @@ export default function GlobeViewer({
         MAX_GLOBE_DEVICE_PIXEL_RATIO
       );
 
-      // Apple Maps-style input: pinch gesture = zoom, scroll = globe pan.
-      // Keep the camera surface-normal so zoom-out behaves like a standard globe.
+      // 2D map input: pinch gesture = zoom, scroll = planar pan.
       const ctrl = viewer.scene.screenSpaceCameraController;
+      ctrl.enableTilt = false;
+      ctrl.enableRotate = false;
       ctrl.inertiaZoom = 0;
       ctrl.minimumZoomDistance = MIN_CAMERA_HEIGHT_METERS;
       ctrl.maximumZoomDistance = MAX_CAMERA_HEIGHT_METERS;
       ctrl.zoomEventTypes = [Cesium.CameraEventType.RIGHT_DRAG];
       ctrl.tiltEventTypes = undefined;
       ctrl.lookEventTypes = undefined;
-      viewer.camera.constrainedAxis = Cesium.Cartesian3.UNIT_Z;
 
       viewerRef.current = viewer;
 
@@ -869,11 +905,16 @@ export default function GlobeViewer({
           }
           lastCursorStatusUpdate = now;
 
-          const ray = viewer.camera.getPickRay(
-            movement.endPosition as import("cesium").Cartesian2
-          );
-          if (!ray) return;
-          const pos = viewer.scene.globe.pick(ray, viewer.scene);
+          const canvasPoint = movement.endPosition as import("cesium").Cartesian2;
+          const pos =
+            viewer.camera.pickEllipsoid(
+              canvasPoint,
+              viewer.scene.globe.ellipsoid
+            ) ??
+            (() => {
+              const ray = viewer.camera.getPickRay(canvasPoint);
+              return ray ? viewer.scene.globe.pick(ray, viewer.scene) : undefined;
+            })();
           if (!pos) {
             if (cursorCoordsRef.current) {
               cursorCoordsRef.current = null;
@@ -954,18 +995,18 @@ export default function GlobeViewer({
     const Cesium = cesiumRef.current;
     const rawViewer = viewerRef.current as {
       camera: { flyTo: (opts: unknown) => void };
+      dataSources: {
+        add: (dataSource: unknown) => unknown;
+        remove: (dataSource: unknown, destroy?: boolean) => boolean;
+      };
       scene: {
-        primitives: {
-          add: (primitive: unknown) => unknown;
-          remove: (primitive: unknown) => boolean;
-        };
         requestRender?: () => void;
       };
     } | null;
 
     if (!chartOverlay || !rawViewer || !Cesium) {
       if (overlayLayerRef.current && rawViewer) {
-        rawViewer.scene.primitives.remove(overlayLayerRef.current);
+        rawViewer.dataSources.remove(overlayLayerRef.current, true);
         overlayLayerRef.current = null;
         activeOverlayImageUrlRef.current = null;
         rawViewer.scene.requestRender?.();
@@ -985,16 +1026,16 @@ export default function GlobeViewer({
 
     try {
       const previousLayer = overlayLayerRef.current;
-      const primitive = createChartOverlayPrimitive(
+      const dataSource = createChartOverlayDataSource(
         Cesium,
         chartOverlay,
         chartOverlayAlphaRef.current
       );
-      rawViewer.scene.primitives.add(primitive);
-      overlayLayerRef.current = primitive;
+      rawViewer.dataSources.add(dataSource);
+      overlayLayerRef.current = dataSource;
       activeOverlayImageUrlRef.current = overlayKey;
       if (previousLayer) {
-        rawViewer.scene.primitives.remove(previousLayer);
+        rawViewer.dataSources.remove(previousLayer, true);
       }
       rawViewer.camera.flyTo({ destination: rectangle, duration: 0.75 });
       rawViewer.scene.requestRender?.();
@@ -1008,7 +1049,7 @@ export default function GlobeViewer({
 
     const Cesium = cesiumRef.current;
     if (!overlayLayerRef.current || !Cesium) return;
-    setChartOverlayPrimitiveAlpha(
+    setChartOverlayDataSourceAlpha(
       Cesium,
       overlayLayerRef.current,
       chartOverlayAlpha
@@ -1040,8 +1081,11 @@ export default function GlobeViewer({
     }
 
     const { lat, lon, altitudeFt, trackDeg } = ownshipPosition;
-    const heightM = altitudeFt !== null ? altitudeFt * 0.3048 : 0;
-    const position = Cesium.Cartesian3.fromDegrees(lon, lat, heightM + CHART_OVERLAY_HEIGHT_METERS);
+    const position = Cesium.Cartesian3.fromDegrees(
+      lon,
+      lat,
+      AIRCRAFT_MARKER_HEIGHT_METERS
+    );
     const rotationRad = getAircraftBillboardRotation(Cesium, trackDeg);
     const iconCanvas =
       aircraftIconCanvasRef.current ?? createOwnshipMarkerCanvas();
@@ -1241,8 +1285,8 @@ export default function GlobeViewer({
         <button
           onClick={onClose}
           className="p-2 bg-black/60 hover:bg-black/80 text-white rounded-full transition-colors"
-          title="Close globe"
-          aria-label="Close globe"
+          title="Close map"
+          aria-label="Close map"
         >
           <X className="w-5 h-5" />
         </button>

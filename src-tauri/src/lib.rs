@@ -234,14 +234,26 @@ struct GeorefPageResult {
     page: u32,
     georeferenced: bool,
     transform: Option<[f64; 6]>,
+    #[serde(alias = "transform_type")]
+    transform_type: Option<String>,
+    #[serde(alias = "high_accuracy_transform")]
+    high_accuracy_transform: Option<serde_json::Value>,
     #[serde(alias = "page_width")]
     page_width: f64,
     #[serde(alias = "page_height")]
     page_height: f64,
     #[serde(alias = "rmse_meters")]
     rmse_meters: Option<f64>,
+    #[serde(alias = "max_error_meters")]
+    max_error_meters: Option<f64>,
+    #[serde(alias = "inlier_count")]
+    inlier_count: Option<u32>,
     #[serde(alias = "control_point_count")]
     control_point_count: u32,
+    #[serde(alias = "control_points")]
+    control_points: Option<serde_json::Value>,
+    #[serde(alias = "vector_paths")]
+    vector_paths: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
