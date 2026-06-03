@@ -139,6 +139,22 @@ export interface GeorefCacheStatus {
   ready: boolean;
 }
 
+export interface GeorefCacheSummary {
+  ready: number;
+  total: number;
+}
+
+export interface GeorefPreloadStatus {
+  running: boolean;
+  useMultiprocess: boolean;
+  workerCount: number;
+  startedJobs: number;
+  activeJobs: number;
+  totalJobs: number;
+  processedJobs: number;
+  failedJobs: number;
+}
+
 export async function getGeoreferenceCacheStatus(
   filePath: string,
   waypointFilePaths: string[] = [],
@@ -151,10 +167,26 @@ export async function getGeoreferenceCacheStatus(
   });
 }
 
-export async function preloadGeoreferenceCharts(
+export async function getGeoreferenceCacheSummary(
   requests: GeorefPreloadRequest[]
+): Promise<GeorefCacheSummary> {
+  return invoke<GeorefCacheSummary>("get_georeference_cache_summary", {
+    requests,
+  });
+}
+
+export async function preloadGeoreferenceCharts(
+  requests: GeorefPreloadRequest[],
+  options: { useMultiprocess?: boolean } = {}
 ): Promise<void> {
-  return invoke("preload_georeference_charts", { requests });
+  return invoke("preload_georeference_charts", {
+    requests,
+    useMultiprocess: options.useMultiprocess ?? true,
+  });
+}
+
+export async function getGeoreferencePreloadStatus(): Promise<GeorefPreloadStatus> {
+  return invoke<GeorefPreloadStatus>("get_georeference_preload_status");
 }
 
 export interface AirportCoord {

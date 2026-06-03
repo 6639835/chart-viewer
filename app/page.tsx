@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import nextDynamic from "next/dynamic";
+import { useTheme } from "next-themes";
 import Sidebar from "@/components/Sidebar";
 import ChartList from "@/components/ChartList";
 import SettingsModal from "@/components/SettingsModal";
@@ -13,6 +14,8 @@ import {
   openExternal,
   georeferenceChart,
   getGeoreferenceCacheStatus,
+  getGeoreferenceCacheSummary,
+  getGeoreferencePreloadStatus,
   readAirportCoords,
   getConfig,
   preloadGeoreferenceCharts,
@@ -34,19 +37,42 @@ import {
 import type { GeorefPdfBounds } from "@/lib/georefMath";
 import type { ChartOverlayData } from "@/components/GlobeViewer";
 import { useGdl90 } from "@/lib/useGdl90";
-import { Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Cpu,
+  Loader2,
+  MapPinned,
+} from "lucide-react";
 
 const MAP_OVERLAY_CACHE_LIMIT = 2;
 const GEOREF_RESULT_CACHE_LIMIT = 8;
-const MAP_OVERLAY_CACHE_VERSION = 6;
+const MAP_OVERLAY_CACHE_VERSION = 7;
+const GEOREF_INIT_PROMPT_SESSION_KEY = "chart-viewer-georef-init-prompted";
+
+type MapOverlayTheme = "light" | "dark";
+
+type GeorefPreloadUiStatus = {
+  kind: "running" | "complete" | "error";
+  ready: number;
+  total: number;
+  useMultiprocess: boolean;
+  workerCount: number;
+  startedJobs: number;
+  activeJobs: number;
+  processedJobs: number;
+  totalJobs: number;
+  failedJobs: number;
+};
 
 function getMapOverlayCacheKey(
   chartId: string,
   pdfFilePath: string,
   waypointFilePaths: string[],
-  pageNumber: number
+  pageNumber: number,
+  theme: MapOverlayTheme
 ) {
-  return `${MAP_OVERLAY_CACHE_VERSION}:${chartId}:${pageNumber}:${pdfFilePath}:${waypointFilePaths.join(",")}`;
+  return `${MAP_OVERLAY_CACHE_VERSION}:${theme}:${chartId}:${pageNumber}:${pdfFilePath}:${waypointFilePaths.join(",")}`;
 }
 
 function getGeorefCacheKey(
@@ -77,6 +103,210 @@ function PDFViewerLoading() {
   return (
     <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900">
       <div className="text-gray-400">{t("home.loadingPdfViewer")}</div>
+    </div>
+  );
+}
+
+function markGeorefInitPromptSeen() {
+  window.sessionStorage.setItem(GEOREF_INIT_PROMPT_SESSION_KEY, "1");
+}
+
+function hasSeenGeorefInitPrompt() {
+  return window.sessionStorage.getItem(GEOREF_INIT_PROMPT_SESSION_KEY) === "1";
+}
+
+function GeorefInitializationPrompt({
+  isOpen,
+  useMultiprocess,
+  onUseMultiprocessChange,
+  onStart,
+  onSkip,
+}: {
+  isOpen: boolean;
+  useMultiprocess: boolean;
+  onUseMultiprocessChange: (value: boolean) => void;
+  onStart: () => void;
+  onSkip: () => void;
+}) {
+  const { t } = useI18n();
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="georef-setup-title"
+        className="w-full max-w-lg overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-800"
+      >
+        <div className="border-b border-gray-200 px-5 py-4 dark:border-gray-700">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+              <MapPinned className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2
+                id="georef-setup-title"
+                className="text-lg font-semibold text-gray-950 dark:text-white"
+              >
+                {t("georefSetup.title")}
+              </h2>
+              <p className="mt-1 text-sm leading-5 text-gray-600 dark:text-gray-300">
+                {t("georefSetup.description")}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-4">
+          <label
+            htmlFor="georef-setup-multiprocess"
+            className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900/70 dark:hover:bg-gray-800"
+          >
+            <input
+              id="georef-setup-multiprocess"
+              type="checkbox"
+              checked={useMultiprocess}
+              onChange={(event) =>
+                onUseMultiprocessChange(event.target.checked)
+              }
+              className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+            />
+            <span className="min-w-0">
+              <span className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                <Cpu className="h-4 w-4 text-gray-500 dark:text-gray-300" />
+                {t("georefSetup.multiprocess")}
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-gray-500 dark:text-gray-400">
+                {t("georefSetup.multiprocessHelp")}
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-gray-200 px-5 py-4 sm:flex-row sm:justify-end dark:border-gray-700">
+          <button
+            type="button"
+            onClick={onSkip}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            {t("georefSetup.cancel")}
+          </button>
+          <button
+            type="button"
+            onClick={onStart}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+          >
+            {t("georefSetup.initialize")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GeorefPreloadStatusBar({ status }: { status: GeorefPreloadUiStatus }) {
+  const { t } = useI18n();
+  const progressDone =
+    status.kind === "running" && status.totalJobs > 0
+      ? status.processedJobs
+      : status.ready;
+  const progressTotal =
+    status.kind === "running" && status.totalJobs > 0
+      ? status.totalJobs
+      : status.total;
+  const percent =
+    progressTotal > 0
+      ? Math.min(100, Math.round((progressDone / progressTotal) * 100))
+      : 0;
+  const isRunning = status.kind === "running";
+  const isError = status.kind === "error";
+  const message = isError
+    ? t("georefSetup.error")
+    : isRunning
+      ? t("georefSetup.progress", {
+          ready: status.ready,
+          total: status.total,
+          processed: status.processedJobs,
+          jobTotal: status.totalJobs,
+        })
+      : status.ready >= status.total
+        ? t("georefSetup.ready", {
+            ready: status.ready,
+            total: status.total,
+          })
+        : t("georefSetup.finished", {
+            ready: status.ready,
+            total: status.total,
+          });
+  const mode = status.useMultiprocess
+    ? t("georefSetup.modeMultiprocess")
+    : t("georefSetup.modeSingleProcess");
+  const workerText =
+    status.workerCount > 0
+      ? t("georefSetup.workerStatus", {
+          workers: status.workerCount,
+          active: status.activeJobs,
+          started: status.startedJobs,
+          processed: status.processedJobs,
+          total: status.totalJobs,
+          failed: status.failedJobs,
+        })
+      : mode;
+
+  return (
+    <div
+      role={isRunning ? "status" : isError ? "alert" : "status"}
+      aria-live="polite"
+      className="fixed bottom-5 right-5 z-40 w-[calc(100vw-2.5rem)] max-w-md overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-800"
+    >
+      <div className="flex items-start gap-3 p-4">
+        <div
+          className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
+            isError
+              ? "bg-red-100 text-red-700 dark:bg-red-900/35 dark:text-red-300"
+              : isRunning
+                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/35 dark:text-blue-300"
+                : "bg-green-100 text-green-700 dark:bg-green-900/35 dark:text-green-300"
+          }`}
+        >
+          {isError ? (
+            <AlertCircle className="h-4 w-4" />
+          ) : isRunning ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <CheckCircle2 className="h-4 w-4" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-medium text-gray-900 dark:text-white">
+              {message}
+            </p>
+            {!isError && (
+              <span className="flex-shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">
+                {percent}%
+              </span>
+            )}
+          </div>
+          {!isError && (
+            <>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    isRunning ? "bg-blue-600" : "bg-green-600"
+                  }`}
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {workerText}
+              </p>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -112,6 +342,7 @@ function findAirportDiagramChart(charts: ChartData[]): ChartData | null {
 
 export default function Home() {
   const { t } = useI18n();
+  const { resolvedTheme } = useTheme();
   const [groupedCharts, setGroupedCharts] = useState<GroupedCharts>({});
   const [airportCoords, setAirportCoords] = useState<AirportCoord[]>([]);
   const [airports, setAirports] = useState<string[]>([]);
@@ -136,6 +367,11 @@ export default function Home() {
   const [georefReady, setGeorefReady] = useState(false);
   const [currentPageNumber, setCurrentPageNumber] = useState(1);
   const [preloadGeoreferences, setPreloadGeoreferences] = useState(true);
+  const [isGeorefInitPromptOpen, setIsGeorefInitPromptOpen] = useState(false);
+  const [georefInitUseMultiprocess, setGeorefInitUseMultiprocess] =
+    useState(true);
+  const [georefPreloadStatus, setGeorefPreloadStatus] =
+    useState<GeorefPreloadUiStatus | null>(null);
   const getPageImageRef = useRef<
     | ((
         pageNumber: number,
@@ -154,12 +390,22 @@ export default function Home() {
   const georefErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
+  const georefPreloadPollTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const georefPreloadRunIdRef = useRef(0);
+  const activeMapOverlayThemeRef = useRef<MapOverlayTheme>("light");
+  const attemptedMapOverlayThemeRefreshRef = useRef<MapOverlayTheme | null>(
+    null
+  );
   const [bookmarkedCharts, setBookmarkedCharts] = useState<Set<string>>(
     new Set()
   );
   const [lastBookmarkedByCategory, setLastBookmarkedByCategory] = useState<
     Record<string, string>
   >({});
+  const mapOverlayTheme: MapOverlayTheme =
+    resolvedTheme === "dark" ? "dark" : "light";
 
   const setSelectedAirportWithDiagram = useCallback(
     (airport: string, chartsForAirport: GroupedCharts[string] | undefined) => {
@@ -389,9 +635,48 @@ export default function Home() {
     [groupedCharts]
   );
 
+  const georefPreloadRequests = useMemo(() => {
+    const requests: GeorefPreloadRequest[] = [];
+
+    for (const airport of Object.keys(groupedCharts).sort()) {
+      const waypointFilePaths = getWaypointFilePathsForAirport(airport);
+      const airportCharts = groupedCharts[airport] ?? {};
+      for (const category of CATEGORY_ORDER) {
+        for (const chart of airportCharts[category] ?? []) {
+          if (!isGeoreferenceable(chart)) continue;
+          requests.push({
+            chartId: chart.ChartId,
+            filePath: getPDFFileName(chart),
+            waypointFilePaths,
+            pageNumber: 1,
+          });
+        }
+      }
+    }
+
+    if (!selectedChart) return requests;
+
+    return requests.sort((a, b) => {
+      if (a.chartId === selectedChart.ChartId) return -1;
+      if (b.chartId === selectedChart.ChartId) return 1;
+      return 0;
+    });
+  }, [
+    getWaypointFilePathsForAirport,
+    groupedCharts,
+    selectedChart,
+  ]);
+
   const clearGeorefOverlay = useCallback(() => {
     setGeorefOverlay(null);
     setCurrentGeorefPage(null);
+  }, []);
+
+  const clearGeorefPreloadPolling = useCallback(() => {
+    if (georefPreloadPollTimeoutRef.current) {
+      clearTimeout(georefPreloadPollTimeoutRef.current);
+      georefPreloadPollTimeoutRef.current = null;
+    }
   }, []);
 
   const cacheMapOverlay = useCallback(
@@ -480,35 +765,40 @@ export default function Home() {
   }, [clearGeorefOverlay, selectedChart]);
 
   useEffect(() => {
-    if (!preloadGeoreferences || airports.length === 0) return;
-
-    const requests: GeorefPreloadRequest[] = [];
-    for (const airport of airports) {
-      const waypointFilePaths = getWaypointFilePathsForAirport(airport);
-      const airportCharts = groupedCharts[airport] ?? {};
-      for (const category of CATEGORY_ORDER) {
-        for (const chart of airportCharts[category] ?? []) {
-          if (!isGeoreferenceable(chart)) continue;
-          requests.push({
-            chartId: chart.ChartId,
-            filePath: getPDFFileName(chart),
-            waypointFilePaths,
-            pageNumber: 1,
-          });
-        }
-      }
+    if (
+      !preloadGeoreferences ||
+      georefPreloadRequests.length === 0 ||
+      georefPreloadStatus?.kind === "running"
+    ) {
+      return;
     }
 
-    if (requests.length === 0) return;
-    preloadGeoreferenceCharts(requests).catch((error) => {
-      console.error("Error preloading georeferences:", error);
-    });
-  }, [
-    airports,
-    getWaypointFilePathsForAirport,
-    groupedCharts,
-    preloadGeoreferences,
-  ]);
+    try {
+      if (hasSeenGeorefInitPrompt()) return;
+    } catch {
+      // If session storage is unavailable, still allow the prompt.
+    }
+
+    let cancelled = false;
+    getGeoreferenceCacheSummary(georefPreloadRequests)
+      .then((summary) => {
+        if (
+          cancelled ||
+          summary.total === 0 ||
+          summary.ready >= summary.total
+        ) {
+          return;
+        }
+        setIsGeorefInitPromptOpen(true);
+      })
+      .catch((error) => {
+        console.error("Error checking georeference cache summary:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [georefPreloadRequests, georefPreloadStatus?.kind, preloadGeoreferences]);
 
   useEffect(() => {
     let cancelled = false;
@@ -567,8 +857,9 @@ export default function Home() {
       if (georefErrorTimeoutRef.current) {
         clearTimeout(georefErrorTimeoutRef.current);
       }
+      clearGeorefPreloadPolling();
     };
-  }, [clearGeorefOverlay]);
+  }, [clearGeorefOverlay, clearGeorefPreloadPolling]);
 
   const handleShowOnMap = useCallback(
     async (pageNumber: number) => {
@@ -590,7 +881,8 @@ export default function Home() {
           selectedChart.ChartId,
           pdfFilePath,
           waypointFilePaths,
-          pageNumber
+          pageNumber,
+          mapOverlayTheme
         );
         const georefCacheKey = getGeorefCacheKey(
           selectedChart.ChartId,
@@ -620,6 +912,8 @@ export default function Home() {
           mapOverlayCacheKey
         );
         if (cachedOverlay) {
+          activeMapOverlayThemeRef.current = mapOverlayTheme;
+          attemptedMapOverlayThemeRefreshRef.current = null;
           setGeorefOverlay(cachedOverlay);
           setCurrentGeorefPage(pageResult);
           setGeorefLoading(false);
@@ -632,7 +926,10 @@ export default function Home() {
           right: pageResult.pageWidth,
           bottom: pageResult.pageHeight,
         };
-        const image = await getPageImageRef.current?.(pageNumber);
+        const image = await getPageImageRef.current?.(pageNumber, {
+          darkMode: mapOverlayTheme === "dark",
+          cropBounds: pageBounds,
+        });
         if (!image) {
           showGeorefError();
           return;
@@ -656,6 +953,8 @@ export default function Home() {
           corners,
         };
         cacheMapOverlay(mapOverlayCacheKey, overlay);
+        activeMapOverlayThemeRef.current = mapOverlayTheme;
+        attemptedMapOverlayThemeRefreshRef.current = null;
         setGeorefOverlay(overlay);
         setCurrentGeorefPage(pageResult);
       } catch (error) {
@@ -673,12 +972,162 @@ export default function Home() {
     [
       cacheMapOverlay,
       getCachedGeorefResult,
+      mapOverlayTheme,
       selectedChart,
       selectedAirport,
       getWaypointFilePathsForAirport,
       showGeorefError,
     ]
   );
+
+  useEffect(() => {
+    if (!isGlobeOpen || !georefOverlay || georefLoading) return;
+    if (activeMapOverlayThemeRef.current === mapOverlayTheme) {
+      attemptedMapOverlayThemeRefreshRef.current = null;
+      return;
+    }
+    if (attemptedMapOverlayThemeRefreshRef.current === mapOverlayTheme) return;
+
+    attemptedMapOverlayThemeRefreshRef.current = mapOverlayTheme;
+    void handleShowOnMap(georefOverlay.pageNumber);
+  }, [
+    georefLoading,
+    georefOverlay,
+    handleShowOnMap,
+    isGlobeOpen,
+    mapOverlayTheme,
+  ]);
+
+  const pollGeorefPreloadStatus = useCallback(
+    (
+      runId: number,
+      requests: GeorefPreloadRequest[],
+      useMultiprocess: boolean
+    ) => {
+      const poll = async () => {
+        try {
+          const [summary, preloadStatus] = await Promise.all([
+            getGeoreferenceCacheSummary(requests),
+            getGeoreferencePreloadStatus(),
+          ]);
+          if (runId !== georefPreloadRunIdRef.current) return;
+
+          const isComplete =
+            !preloadStatus.running || summary.ready >= summary.total;
+          setGeorefPreloadStatus({
+            kind: isComplete ? "complete" : "running",
+            ready: summary.ready,
+            total: summary.total,
+            useMultiprocess: preloadStatus.useMultiprocess,
+            workerCount: preloadStatus.workerCount,
+            startedJobs: preloadStatus.startedJobs,
+            activeJobs: preloadStatus.activeJobs,
+            processedJobs: preloadStatus.processedJobs,
+            totalJobs: preloadStatus.totalJobs,
+            failedJobs: preloadStatus.failedJobs,
+          });
+
+          clearGeorefPreloadPolling();
+          if (!isComplete) {
+            georefPreloadPollTimeoutRef.current = setTimeout(poll, 1500);
+            return;
+          }
+
+          georefPreloadPollTimeoutRef.current = setTimeout(() => {
+            if (runId === georefPreloadRunIdRef.current) {
+              setGeorefPreloadStatus(null);
+            }
+            georefPreloadPollTimeoutRef.current = null;
+          }, 8000);
+        } catch (error) {
+          if (runId !== georefPreloadRunIdRef.current) return;
+          console.error("Error polling georeference preload status:", error);
+          clearGeorefPreloadPolling();
+          setGeorefPreloadStatus({
+            kind: "error",
+            ready: 0,
+            total: requests.length,
+            useMultiprocess,
+            workerCount: 0,
+            startedJobs: 0,
+            activeJobs: 0,
+            processedJobs: 0,
+            totalJobs: requests.length,
+            failedJobs: 0,
+          });
+        }
+      };
+
+      void poll();
+    },
+    [clearGeorefPreloadPolling]
+  );
+
+  const handleStartGeorefInitialization = useCallback(async () => {
+    const requests = georefPreloadRequests;
+    if (requests.length === 0) {
+      setIsGeorefInitPromptOpen(false);
+      return;
+    }
+
+    try {
+      markGeorefInitPromptSeen();
+    } catch {
+      // Session storage can be unavailable in restricted browser contexts.
+    }
+
+    const useMultiprocess = georefInitUseMultiprocess;
+    const runId = georefPreloadRunIdRef.current + 1;
+    georefPreloadRunIdRef.current = runId;
+    clearGeorefPreloadPolling();
+    setIsGeorefInitPromptOpen(false);
+    setGeorefPreloadStatus({
+      kind: "running",
+      ready: 0,
+      total: requests.length,
+      useMultiprocess,
+      workerCount: 0,
+      startedJobs: 0,
+      activeJobs: 0,
+      processedJobs: 0,
+      totalJobs: requests.length,
+      failedJobs: 0,
+    });
+
+    try {
+      await preloadGeoreferenceCharts(requests, { useMultiprocess });
+      pollGeorefPreloadStatus(runId, requests, useMultiprocess);
+    } catch (error) {
+      if (runId !== georefPreloadRunIdRef.current) return;
+      console.error("Error preloading georeferences:", error);
+      setGeorefPreloadStatus({
+        kind: "error",
+        ready: 0,
+        total: requests.length,
+        useMultiprocess,
+        workerCount: 0,
+        startedJobs: 0,
+        activeJobs: 0,
+        processedJobs: 0,
+        totalJobs: requests.length,
+        failedJobs: 0,
+      });
+    }
+  }, [
+    clearGeorefPreloadPolling,
+    georefInitUseMultiprocess,
+    georefPreloadRequests,
+    pollGeorefPreloadStatus,
+  ]);
+
+  const handleSkipGeorefInitialization = useCallback(() => {
+    try {
+      markGeorefInitPromptSeen();
+    } catch {
+      // Session storage can be unavailable in restricted browser contexts.
+    }
+    setIsGeorefInitPromptOpen(false);
+  }, []);
 
   const currentCharts =
     selectedAirport && selectedCategory
@@ -865,6 +1314,18 @@ export default function Home() {
         onClose={() => setIsSettingsOpen(false)}
         onSave={handleSettingsSaved}
       />
+
+      <GeorefInitializationPrompt
+        isOpen={isGeorefInitPromptOpen}
+        useMultiprocess={georefInitUseMultiprocess}
+        onUseMultiprocessChange={setGeorefInitUseMultiprocess}
+        onStart={handleStartGeorefInitialization}
+        onSkip={handleSkipGeorefInitialization}
+      />
+
+      {georefPreloadStatus && (
+        <GeorefPreloadStatusBar status={georefPreloadStatus} />
+      )}
     </div>
   );
 }

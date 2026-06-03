@@ -9,7 +9,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::net::UdpSocket;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -27,6 +27,8 @@ const GEOREF_TIMEOUT: Duration = Duration::from_secs(90);
 const MAX_GEOREF_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const GEOREF_CACHE_DIR: &str = "georef-cache";
 const GEOREF_CACHE_VERSION: &str = "reference-symbol-matcher-v1";
+const GEOREF_PRELOAD_BATCH_SIZE: usize = 1;
+const GEOREF_PRELOAD_MAX_WORKERS: usize = 4;
 
 #[derive(Default)]
 struct PdfPathCache {
@@ -44,6 +46,13 @@ struct Gdl90State {
 #[derive(Default)]
 struct GeorefPreloadState {
     running: AtomicBool,
+    use_multiprocess: AtomicBool,
+    worker_count: AtomicUsize,
+    started_jobs: AtomicUsize,
+    active_jobs: AtomicUsize,
+    total_jobs: AtomicUsize,
+    processed_jobs: AtomicUsize,
+    failed_jobs: AtomicUsize,
 }
 
 impl Default for Gdl90State {
@@ -331,7 +340,7 @@ struct GeorefResult {
     pages: Vec<GeorefPageResult>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GeorefPreloadRequest {
     #[allow(dead_code)]
@@ -346,6 +355,26 @@ struct GeorefPreloadRequest {
 #[serde(rename_all = "camelCase")]
 struct GeorefCacheStatus {
     ready: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GeorefCacheSummary {
+    ready: usize,
+    total: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GeorefPreloadStatus {
+    running: bool,
+    use_multiprocess: bool,
+    worker_count: usize,
+    started_jobs: usize,
+    active_jobs: usize,
+    total_jobs: usize,
+    processed_jobs: usize,
+    failed_jobs: usize,
 }
 
 fn response(status: u16, content_type: &str, body: Vec<u8>) -> Response<Vec<u8>> {
@@ -1202,13 +1231,22 @@ fn georef_json_number(value: &serde_json::Value, keys: &[&str]) -> Option<f64> {
 }
 
 fn page_has_display_gcp_overlay(page: &GeorefPageResult) -> bool {
-    let Some(points) = page.control_points.as_ref().and_then(|value| value.as_array()) else {
+    let Some(points) = page
+        .control_points
+        .as_ref()
+        .and_then(|value| value.as_array())
+    else {
         return false;
     };
 
     let used_points: Vec<&serde_json::Value> = points
         .iter()
-        .filter(|point| point.get("used").and_then(|value| value.as_bool()).unwrap_or(false))
+        .filter(|point| {
+            point
+                .get("used")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false)
+        })
         .collect();
     let source_points: Vec<&serde_json::Value> = if used_points.len() >= 2 {
         used_points
@@ -1279,7 +1317,19 @@ fn resolve_waypoint_paths(
 }
 
 fn build_georef_command(app: &AppHandle) -> Result<Command, String> {
-    if let Some(sidecar_path) = locate_georef_sidecar() {
+    let use_dev_script =
+        cfg!(debug_assertions) && std::env::var("GEOREF_USE_SIDECAR").ok().as_deref() != Some("1");
+
+    if use_dev_script {
+        let script_path = locate_georef_script(app).ok_or_else(|| {
+            "georef runtime not found - bundle the sidecar or set GEOREF_SCRIPT_PATH in development"
+                .to_string()
+        })?;
+        let python = std::env::var("GEOREF_PYTHON").unwrap_or_else(|_| "python3".to_string());
+        let mut cmd = Command::new(python);
+        cmd.arg(script_path);
+        Ok(cmd)
+    } else if let Some(sidecar_path) = locate_georef_sidecar() {
         Ok(Command::new(sidecar_path))
     } else if !cfg!(debug_assertions) {
         Err("georef sidecar not found in bundled application".to_string())
@@ -1372,14 +1422,43 @@ struct PreloadJob {
     cache_path: PathBuf,
 }
 
+struct GeorefBatchStats {
+    processed: usize,
+    failed: usize,
+}
+
 static GEOREF_BATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn georef_preload_worker_count(use_multiprocess: bool, job_count: usize) -> usize {
+    if job_count == 0 {
+        return 0;
+    }
+
+    if !use_multiprocess {
+        return 1;
+    }
+
+    let configured_workers = std::env::var("GEOREF_PRELOAD_WORKERS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0);
+    let worker_limit = configured_workers.unwrap_or(GEOREF_PRELOAD_MAX_WORKERS);
+    let cores = thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(worker_limit);
+
+    cores.min(worker_limit).min(job_count).max(1)
+}
 
 /// Run one batch of preload jobs in a single sidecar invocation, then write a
 /// per-chart cache file for each job that succeeded. One process startup pays
 /// for the whole slice instead of one startup per chart.
-fn run_georef_batch(app: &AppHandle, csv_dir: &Path, jobs: &[PreloadJob]) {
+fn run_georef_batch(app: &AppHandle, csv_dir: &Path, jobs: &[PreloadJob]) -> GeorefBatchStats {
     if jobs.is_empty() {
-        return;
+        return GeorefBatchStats {
+            processed: 0,
+            failed: 0,
+        };
     }
 
     let manifest_jobs: Vec<serde_json::Value> = jobs
@@ -1405,16 +1484,20 @@ fn run_georef_batch(app: &AppHandle, csv_dir: &Path, jobs: &[PreloadJob]) {
         "jobs": manifest_jobs,
     });
     let Ok(manifest_text) = serde_json::to_string(&manifest) else {
-        return;
+        return GeorefBatchStats {
+            processed: jobs.len(),
+            failed: jobs.len(),
+        };
     };
 
     let unique = GEOREF_BATCH_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let manifest_path = std::env::temp_dir().join(format!(
-        "georef-batch-{}-{unique}.json",
-        std::process::id()
-    ));
+    let manifest_path =
+        std::env::temp_dir().join(format!("georef-batch-{}-{unique}.json", std::process::id()));
     if fs::write(&manifest_path, manifest_text).is_err() {
-        return;
+        return GeorefBatchStats {
+            processed: jobs.len(),
+            failed: jobs.len(),
+        };
     }
 
     let result = (|| -> Result<GeorefBatchOutput, String> {
@@ -1433,21 +1516,41 @@ fn run_georef_batch(app: &AppHandle, csv_dir: &Path, jobs: &[PreloadJob]) {
 
     let _ = fs::remove_file(&manifest_path);
 
-    if let Ok(output) = result {
-        for job_result in output.results {
-            if !job_result.ok {
-                continue;
+    match result {
+        Ok(output) => {
+            let mut failed = jobs.len().saturating_sub(output.results.len());
+            for job_result in output.results {
+                if !job_result.ok {
+                    failed += 1;
+                    continue;
+                }
+                if let (Some(pages), Some(job)) = (job_result.pages, jobs.get(job_result.id)) {
+                    write_cached_georef(&job.cache_path, &pages);
+                } else {
+                    failed += 1;
+                }
             }
-            if let (Some(pages), Some(job)) = (job_result.pages, jobs.get(job_result.id)) {
-                write_cached_georef(&job.cache_path, &pages);
+
+            GeorefBatchStats {
+                processed: jobs.len(),
+                failed,
             }
         }
+        Err(_) => GeorefBatchStats {
+            processed: jobs.len(),
+            failed: jobs.len(),
+        },
     }
 }
 
 /// Resolve preload requests to uncached jobs and process them across worker
 /// threads, each running its slice as a single batched sidecar invocation.
-fn run_georef_preload(app: AppHandle, requests: Vec<GeorefPreloadRequest>) {
+fn run_georef_preload(
+    app: AppHandle,
+    requests: Vec<GeorefPreloadRequest>,
+    use_multiprocess: bool,
+    preload_state: Arc<GeorefPreloadState>,
+) {
     let config = read_config(&app);
     let charts_dir = resolve_config_path(&config.charts_directory);
     let csv_dir = resolve_config_path(&config.csv_directory);
@@ -1459,9 +1562,13 @@ fn run_georef_preload(app: AppHandle, requests: Vec<GeorefPreloadRequest>) {
         };
         let waypoint_paths =
             resolve_waypoint_paths(&charts_dir, Some(request.waypoint_file_paths), None);
-        let Ok(cache_path) =
-            georef_cache_path(&app, &pdf_path, &csv_dir, &waypoint_paths, request.page_number)
-        else {
+        let Ok(cache_path) = georef_cache_path(
+            &app,
+            &pdf_path,
+            &csv_dir,
+            &waypoint_paths,
+            request.page_number,
+        ) else {
             continue;
         };
         if read_cached_georef(&cache_path).is_some() {
@@ -1476,41 +1583,107 @@ fn run_georef_preload(app: AppHandle, requests: Vec<GeorefPreloadRequest>) {
     }
 
     if jobs.is_empty() {
+        preload_state.worker_count.store(0, Ordering::SeqCst);
+        preload_state.started_jobs.store(0, Ordering::SeqCst);
+        preload_state.active_jobs.store(0, Ordering::SeqCst);
+        preload_state.total_jobs.store(0, Ordering::SeqCst);
+        preload_state.processed_jobs.store(0, Ordering::SeqCst);
+        preload_state.failed_jobs.store(0, Ordering::SeqCst);
         return;
     }
 
-    let cores = thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4);
-    let workers = cores.min(jobs.len()).max(1);
+    let total_jobs = jobs.len();
+    let workers = georef_preload_worker_count(use_multiprocess, total_jobs);
 
-    // Contiguous chunks keep each worker's batch evenly sized.
-    let chunk_size = jobs.len().div_ceil(workers);
+    preload_state.worker_count.store(workers, Ordering::SeqCst);
+    preload_state.started_jobs.store(0, Ordering::SeqCst);
+    preload_state.active_jobs.store(0, Ordering::SeqCst);
+    preload_state.total_jobs.store(total_jobs, Ordering::SeqCst);
+    preload_state.processed_jobs.store(0, Ordering::SeqCst);
+    preload_state.failed_jobs.store(0, Ordering::SeqCst);
+
     let csv_dir = Arc::new(csv_dir);
+    let job_queue = Arc::new(Mutex::new(jobs));
     let mut handles = Vec::new();
-    let mut chunks: Vec<Vec<PreloadJob>> = Vec::new();
-    let mut current: Vec<PreloadJob> = Vec::with_capacity(chunk_size);
-    for job in jobs {
-        current.push(job);
-        if current.len() == chunk_size {
-            chunks.push(std::mem::take(&mut current));
-        }
-    }
-    if !current.is_empty() {
-        chunks.push(current);
-    }
 
-    for chunk in chunks {
+    for _ in 0..workers {
         let app = app.clone();
         let csv_dir = Arc::clone(&csv_dir);
-        handles.push(thread::spawn(move || {
-            run_georef_batch(&app, &csv_dir, &chunk);
+        let job_queue = Arc::clone(&job_queue);
+        let preload_state = Arc::clone(&preload_state);
+        handles.push(thread::spawn(move || loop {
+            let batch = {
+                let Ok(mut queue) = job_queue.lock() else {
+                    return;
+                };
+                let mut batch = Vec::with_capacity(GEOREF_PRELOAD_BATCH_SIZE);
+                for _ in 0..GEOREF_PRELOAD_BATCH_SIZE {
+                    let Some(job) = queue.pop() else {
+                        break;
+                    };
+                    batch.push(job);
+                }
+                batch
+            };
+
+            if batch.is_empty() {
+                return;
+            }
+
+            let batch_len = batch.len();
+            preload_state
+                .started_jobs
+                .fetch_add(batch_len, Ordering::SeqCst);
+            preload_state
+                .active_jobs
+                .fetch_add(batch_len, Ordering::SeqCst);
+
+            let stats = run_georef_batch(&app, &csv_dir, &batch);
+            preload_state
+                .processed_jobs
+                .fetch_add(stats.processed, Ordering::SeqCst);
+            preload_state
+                .failed_jobs
+                .fetch_add(stats.failed, Ordering::SeqCst);
+            preload_state
+                .active_jobs
+                .fetch_sub(batch_len, Ordering::SeqCst);
         }));
     }
 
     for handle in handles {
         let _ = handle.join();
     }
+}
+
+fn georef_request_cache_ready(
+    app: &AppHandle,
+    charts_dir: &Path,
+    csv_dir: &Path,
+    file_path: String,
+    waypoint_file_paths: Option<Vec<String>>,
+    waypoint_file_path: Option<String>,
+    page_number: Option<u32>,
+) -> bool {
+    let Some(pdf_path) = find_pdf_path(charts_dir, &file_path) else {
+        return false;
+    };
+    let waypoint_paths =
+        resolve_waypoint_paths(charts_dir, waypoint_file_paths, waypoint_file_path);
+    let Ok(cache_path) = georef_cache_path(app, &pdf_path, csv_dir, &waypoint_paths, page_number)
+    else {
+        return false;
+    };
+    read_cached_georef(&cache_path)
+        .map(|pages| {
+            pages.iter().any(|page| {
+                page_has_display_gcp_overlay(page)
+                    && page_number
+                        .map(|wanted| wanted == page.page)
+                        .unwrap_or(true)
+            })
+        })
+        .unwrap_or(false)
 }
 
 #[tauri::command]
@@ -1524,32 +1697,65 @@ fn get_georeference_cache_status(
     let config = read_config(&app);
     let charts_dir = resolve_config_path(&config.charts_directory);
     let csv_dir = resolve_config_path(&config.csv_directory);
-    let Some(pdf_path) = find_pdf_path(&charts_dir, &file_path) else {
-        return GeorefCacheStatus { ready: false };
-    };
-    let waypoint_paths =
-        resolve_waypoint_paths(&charts_dir, waypoint_file_paths, waypoint_file_path);
-    let Ok(cache_path) = georef_cache_path(&app, &pdf_path, &csv_dir, &waypoint_paths, page_number)
-    else {
-        return GeorefCacheStatus { ready: false };
-    };
-    let ready = read_cached_georef(&cache_path)
-        .map(|pages| {
-            pages.iter().any(|page| {
-                page_has_display_gcp_overlay(page)
-                    && page_number
-                        .map(|wanted| wanted == page.page)
-                        .unwrap_or(true)
-            })
-        })
-        .unwrap_or(false);
+    let ready = georef_request_cache_ready(
+        &app,
+        &charts_dir,
+        &csv_dir,
+        file_path,
+        waypoint_file_paths,
+        waypoint_file_path,
+        page_number,
+    );
     GeorefCacheStatus { ready }
+}
+
+#[tauri::command]
+fn get_georeference_cache_summary(
+    app: AppHandle,
+    requests: Vec<GeorefPreloadRequest>,
+) -> GeorefCacheSummary {
+    let config = read_config(&app);
+    let charts_dir = resolve_config_path(&config.charts_directory);
+    let csv_dir = resolve_config_path(&config.csv_directory);
+    let total = requests.len();
+    let ready = requests
+        .into_iter()
+        .filter(|request| {
+            georef_request_cache_ready(
+                &app,
+                &charts_dir,
+                &csv_dir,
+                request.file_path.clone(),
+                Some(request.waypoint_file_paths.clone()),
+                None,
+                request.page_number,
+            )
+        })
+        .count();
+
+    GeorefCacheSummary { ready, total }
+}
+
+#[tauri::command]
+fn get_georeference_preload_status(app: AppHandle) -> GeorefPreloadStatus {
+    let state = app.state::<Arc<GeorefPreloadState>>();
+    GeorefPreloadStatus {
+        running: state.running.load(Ordering::SeqCst),
+        use_multiprocess: state.use_multiprocess.load(Ordering::SeqCst),
+        worker_count: state.worker_count.load(Ordering::SeqCst),
+        started_jobs: state.started_jobs.load(Ordering::SeqCst),
+        active_jobs: state.active_jobs.load(Ordering::SeqCst),
+        total_jobs: state.total_jobs.load(Ordering::SeqCst),
+        processed_jobs: state.processed_jobs.load(Ordering::SeqCst),
+        failed_jobs: state.failed_jobs.load(Ordering::SeqCst),
+    }
 }
 
 #[tauri::command]
 fn preload_georeference_charts(
     app: AppHandle,
     requests: Vec<GeorefPreloadRequest>,
+    use_multiprocess: Option<bool>,
 ) -> Result<(), String> {
     let state = app.state::<Arc<GeorefPreloadState>>();
     if state.running.swap(true, Ordering::SeqCst) {
@@ -1557,8 +1763,21 @@ fn preload_georeference_charts(
     }
 
     let preload_state = Arc::clone(&*state);
+    let use_multiprocess = use_multiprocess.unwrap_or(true);
+    preload_state
+        .use_multiprocess
+        .store(use_multiprocess, Ordering::SeqCst);
+    preload_state.worker_count.store(0, Ordering::SeqCst);
+    preload_state.started_jobs.store(0, Ordering::SeqCst);
+    preload_state.active_jobs.store(0, Ordering::SeqCst);
+    preload_state.total_jobs.store(0, Ordering::SeqCst);
+    preload_state.processed_jobs.store(0, Ordering::SeqCst);
+    preload_state.failed_jobs.store(0, Ordering::SeqCst);
+
     thread::spawn(move || {
-        run_georef_preload(app, requests);
+        run_georef_preload(app, requests, use_multiprocess, Arc::clone(&preload_state));
+        preload_state.worker_count.store(0, Ordering::SeqCst);
+        preload_state.active_jobs.store(0, Ordering::SeqCst);
         preload_state.running.store(false, Ordering::SeqCst);
     });
 
@@ -1606,6 +1825,8 @@ pub fn run() {
             read_chart_sources,
             read_airport_coords,
             get_georeference_cache_status,
+            get_georeference_cache_summary,
+            get_georeference_preload_status,
             preload_georeference_charts,
             georeference_chart,
             start_gdl90_listener,

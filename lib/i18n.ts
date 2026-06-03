@@ -12,6 +12,7 @@ export type TranslationKey =
   | "common.githubRepository"
   | "common.language"
   | "common.loading"
+  | "common.notNow"
   | "common.saveChanges"
   | "common.saved"
   | "common.saving"
@@ -50,6 +51,19 @@ export type TranslationKey =
   | "home.openMenu"
   | "home.selectCategoryAndChart"
   | "home.tapMenuToSelect"
+  | "georefSetup.cancel"
+  | "georefSetup.description"
+  | "georefSetup.error"
+  | "georefSetup.finished"
+  | "georefSetup.initialize"
+  | "georefSetup.modeMultiprocess"
+  | "georefSetup.modeSingleProcess"
+  | "georefSetup.multiprocess"
+  | "georefSetup.multiprocessHelp"
+  | "georefSetup.progress"
+  | "georefSetup.ready"
+  | "georefSetup.title"
+  | "georefSetup.workerStatus"
   | "chartList.addBookmark"
   | "chartList.all"
   | "chartList.chart"
@@ -110,6 +124,7 @@ export const translations: Record<Locale, Translations> = {
     "common.githubRepository": "GitHub Repository",
     "common.language": "Language",
     "common.loading": "Loading...",
+    "common.notNow": "Not Now",
     "common.saveChanges": "Save Changes",
     "common.saved": "Saved",
     "common.saving": "Saving...",
@@ -133,9 +148,9 @@ export const translations: Record<Locale, Translations> = {
       "Or use absolute paths selected with the native picker",
     "settings.pathFormatRelative": "Use relative paths such as {path}",
     "settings.preloadGeoreferences":
-      "Initialize map georeferences automatically",
+      "Ask to initialize map georeferences at startup",
     "settings.preloadGeoreferencesHelp":
-      "Builds and stores georeference data in the background so map buttons only appear when charts are ready.",
+      "Shows a startup prompt for building georeference data in the background. Map buttons appear when charts are ready.",
     "settings.selectChartsDirectory": "Select Charts Directory",
     "settings.selectCsvDirectory": "Select CSV Directory",
     "settings.title": "Settings",
@@ -154,6 +169,24 @@ export const translations: Record<Locale, Translations> = {
     "home.openMenu": "Open Menu",
     "home.selectCategoryAndChart": "Select a category and chart to view",
     "home.tapMenuToSelect": "Tap the menu to select a category and chart",
+    "georefSetup.cancel": "Skip for this session",
+    "georefSetup.description":
+      "Initialize georeference data for the current airport now so supported PDF charts can be shown on the map. Other charts will still georeference on demand.",
+    "georefSetup.error": "Map initialization failed to start.",
+    "georefSetup.finished":
+      "Initialization finished: {ready} of {total} charts ready for the map.",
+    "georefSetup.initialize": "Initialize",
+    "georefSetup.modeMultiprocess": "Multiprocess",
+    "georefSetup.modeSingleProcess": "Single process",
+    "georefSetup.multiprocess": "Use multiprocess acceleration",
+    "georefSetup.multiprocessHelp":
+      "Runs several PDF matchers in parallel for faster setup. Single process is quieter on slower laptops.",
+    "georefSetup.progress":
+      "Preparing map data: {processed} of {jobTotal} jobs finished; {ready} charts ready",
+    "georefSetup.ready": "Map data ready: {ready} of {total} charts ready.",
+    "georefSetup.title": "Enable PDF on Map?",
+    "georefSetup.workerStatus":
+      "{workers} workers · {active} in flight · {processed}/{total} done · {failed} failed",
     "chartList.addBookmark": "Add bookmark",
     "chartList.all": "All",
     "chartList.chart": "chart",
@@ -204,6 +237,7 @@ export const translations: Record<Locale, Translations> = {
     "common.githubRepository": "GitHub 仓库",
     "common.language": "语言",
     "common.loading": "加载中...",
+    "common.notNow": "暂不",
     "common.saveChanges": "保存更改",
     "common.saved": "已保存",
     "common.saving": "保存中...",
@@ -223,9 +257,9 @@ export const translations: Record<Locale, Translations> = {
     "settings.pathFormat": "路径格式：",
     "settings.pathFormatAbsolute": "也可以使用原生选择器选择绝对路径",
     "settings.pathFormatRelative": "使用相对路径，例如 {path}",
-    "settings.preloadGeoreferences": "自动初始化地图地理配准",
+    "settings.preloadGeoreferences": "启动时询问是否初始化地图地理配准",
     "settings.preloadGeoreferencesHelp":
-      "在后台生成并保存地理配准数据；航图准备好后才显示地图按钮。",
+      "启动时弹出提示，在后台生成并保存地理配准数据；航图准备好后才显示地图按钮。",
     "settings.selectChartsDirectory": "选择航图目录",
     "settings.selectCsvDirectory": "选择 CSV 目录",
     "settings.title": "设置",
@@ -244,6 +278,23 @@ export const translations: Record<Locale, Translations> = {
     "home.openMenu": "打开菜单",
     "home.selectCategoryAndChart": "选择类别和航图以查看",
     "home.tapMenuToSelect": "点击菜单选择类别和航图",
+    "georefSetup.cancel": "本次跳过",
+    "georefSetup.description":
+      "现在初始化当前机场的地理配准数据，让支持的 PDF 航图可以显示在地图上。其他航图仍会在需要时即时配准。",
+    "georefSetup.error": "地图初始化启动失败。",
+    "georefSetup.finished": "初始化完成：{ready}/{total} 张航图可用于地图。",
+    "georefSetup.initialize": "初始化",
+    "georefSetup.modeMultiprocess": "多进程",
+    "georefSetup.modeSingleProcess": "单进程",
+    "georefSetup.multiprocess": "使用多进程加速",
+    "georefSetup.multiprocessHelp":
+      "并行运行多个 PDF 匹配进程以加快初始化。较慢的电脑可选择单进程以降低负载。",
+    "georefSetup.progress":
+      "正在准备地图数据：已完成 {processed}/{jobTotal} 个任务；{ready} 张航图已就绪",
+    "georefSetup.ready": "地图数据已就绪：{ready}/{total} 张航图可用。",
+    "georefSetup.title": "启用 PDF 显示到地图？",
+    "georefSetup.workerStatus":
+      "{workers} 个进程 · {active} 个处理中 · 已完成 {processed}/{total} · 失败 {failed}",
     "chartList.addBookmark": "添加书签",
     "chartList.all": "全部",
     "chartList.chart": "张航图",
