@@ -8,6 +8,7 @@ import ChartList from "@/components/ChartList";
 import SettingsModal from "@/components/SettingsModal";
 import { useI18n } from "@/components/I18nProvider";
 import { getPDFFileName } from "@/lib/chartParser";
+import { getChartListDisplayCount } from "@/lib/chartListGrouping";
 import {
   getPdfUrl,
   loadGroupedCharts,
@@ -1136,7 +1137,10 @@ export default function Home() {
 
   const categoryCounts: Record<ChartCategory, number> = CATEGORY_ORDER.reduce(
     (acc, category) => {
-      acc[category] = groupedCharts[selectedAirport]?.[category]?.length || 0;
+      acc[category] = getChartListDisplayCount(
+        groupedCharts[selectedAirport]?.[category] ?? [],
+        category
+      );
       return acc;
     },
     {} as Record<ChartCategory, number>

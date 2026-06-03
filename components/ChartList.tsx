@@ -7,6 +7,7 @@ import {
   formatAppChartName,
   formatSidStarChartName,
 } from "@/lib/chartFormatter";
+import { groupChartsByRunway, sortTaxiCharts } from "@/lib/chartListGrouping";
 import { useAutoHideScrollbar } from "@/lib/hooks/useAutoHideScrollbar";
 import { useI18n } from "@/components/I18nProvider";
 
@@ -20,113 +21,6 @@ interface ChartListProps {
 }
 
 const LONG_CHART_NAME_LENGTH = 34;
-
-// Extract runway information from chart name
-function extractRunways(chartName: string): string[] {
-  const runways: string[] = [];
-
-  // Check if chart name contains spaces (new format) or not (old format)
-  const hasSpaces = chartName.replace(/\([^)]*\)/g, "").includes(" ");
-
-  if (hasSpaces) {
-    // New format: "RNP ILS/DME z RW 24", "RNAV RWY 01/36L/36R", "RW 18L"
-    // Pattern: RW or RWY followed by optional space and runway numbers separated by /
-    const rwyMatch = chartName.match(
-      /RW(?:Y)?\s*(\d{2}[LRC]?(?:\/\d{2}[LRC]?)*)/i
-    );
-    if (rwyMatch) {
-      const rwyString = rwyMatch[1];
-      // Split by / to get individual runways
-      const parts = rwyString.split("/");
-      runways.push(...parts.map((p) => p.trim()));
-    }
-  } else {
-    // Old format: RWY followed by runway numbers (e.g., RWY0136L36R, RWY18L18R19)
-    const rwyMatch = chartName.match(
-      /RWY(\d{2}(?:[LRC])?(?:\d{2}(?:[LRC])?)*)/i
-    );
-    if (rwyMatch) {
-      const rwyString = rwyMatch[1];
-      // Split into individual runways (2-3 characters each)
-      const matches = rwyString.match(/\d{2}[LRC]?/g);
-      if (matches) {
-        runways.push(...matches);
-      }
-    }
-  }
-
-  return runways;
-}
-
-// Group charts by runway
-function groupChartsByRunway(charts: ChartData[]): Map<string, ChartData[]> {
-  const grouped = new Map<string, ChartData[]>();
-
-  charts.forEach((chart) => {
-    const runways = extractRunways(chart.ChartName);
-
-    if (runways.length > 0) {
-      // Add chart to each runway it serves
-      runways.forEach((runway) => {
-        if (!grouped.has(runway)) {
-          grouped.set(runway, []);
-        }
-        grouped.get(runway)!.push(chart);
-      });
-    } else {
-      // Charts without runway info go to "其他" group
-      if (!grouped.has("其他")) {
-        grouped.set("其他", []);
-      }
-      grouped.get("其他")!.push(chart);
-    }
-  });
-
-  return grouped;
-}
-
-// Sort TAXI charts by PAGE_NUMBER (e.g., 2A, 2B, 2C, etc.)
-function sortTaxiCharts(charts: ChartData[]): ChartData[] {
-  return [...charts].sort((a, b) => {
-    const pageA = a.PAGE_NUMBER;
-    const pageB = b.PAGE_NUMBER;
-
-    // Extract the numeric prefix and letter/suffix
-    const parsePageNumber = (page: string) => {
-      // Match patterns like: 2A, 2A-1, 2R01, 0G-1, 2C-1-SUP
-      const match = page.match(/^(\d+)([A-Z]?)(-?\d*)(.*)?$/);
-      if (!match) return { prefix: 0, letter: "", suffix: "", rest: page };
-
-      return {
-        prefix: parseInt(match[1]) || 0,
-        letter: match[2] || "",
-        suffix: match[3] || "",
-        rest: match[4] || "",
-      };
-    };
-
-    const parsedA = parsePageNumber(pageA);
-    const parsedB = parsePageNumber(pageB);
-
-    // Compare numeric prefix first
-    if (parsedA.prefix !== parsedB.prefix) {
-      return parsedA.prefix - parsedB.prefix;
-    }
-
-    // Then compare letter (A, B, C, etc.)
-    if (parsedA.letter !== parsedB.letter) {
-      return parsedA.letter.localeCompare(parsedB.letter);
-    }
-
-    // Then compare suffix
-    if (parsedA.suffix !== parsedB.suffix) {
-      return parsedA.suffix.localeCompare(parsedB.suffix);
-    }
-
-    // Finally compare the rest
-    return parsedA.rest.localeCompare(parsedB.rest);
-  });
-}
 
 export default function ChartList({
   charts,
