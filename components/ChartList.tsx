@@ -203,6 +203,17 @@ export default function ChartList({
     return sortedRunways.filter((runway) => runway === selectedRunwayFilter);
   }, [sortedRunways, selectedRunwayFilter]);
 
+  const visibleChartCount = useMemo(() => {
+    if (!shouldGroupByRunway || !groupedCharts) {
+      return sortedCharts.length;
+    }
+
+    return filteredRunways.reduce(
+      (count, runway) => count + (groupedCharts.get(runway)?.length ?? 0),
+      0
+    );
+  }, [filteredRunways, groupedCharts, shouldGroupByRunway, sortedCharts.length]);
+
   if (sortedCharts.length === 0) {
     return (
       <div className="flex items-center justify-center h-full bg-white dark:bg-gray-900 text-gray-400 dark:text-gray-500">
@@ -226,7 +237,7 @@ export default function ChartList({
       >
         <div className="p-4 sm:p-6">
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-800">
-            {t("chartList.chartsHeading", { count: sortedCharts.length })}
+            {t("chartList.chartsHeading", { count: visibleChartCount })}
           </h2>
           <div className="space-y-2">
             {sortedCharts.map((chart) => {
@@ -342,7 +353,7 @@ export default function ChartList({
     >
       <div className="p-4 sm:p-6">
         <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-800">
-          {t("chartList.chartsHeading", { count: sortedCharts.length })}
+          {t("chartList.chartsHeading", { count: visibleChartCount })}
         </h2>
 
         {/* Runway Filter */}
