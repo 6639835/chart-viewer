@@ -492,10 +492,6 @@ def match_pdf(
         for ci, c in enumerate(candidates):
             d = c["drawing"]
             r = fitz.Rect(c["bbox_mupdf"])
-            pts = points_for_drawings([d], spacing=0.20, curve_steps=32)
-            if pts.shape[0] < 5:
-                continue
-            desc = descriptor_for_drawings([d], pts)
             center = ((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0)
             if point_inside_any_box(center, word_boxes):
                 all_rejected.append({
@@ -526,6 +522,10 @@ def match_pdf(
                     "nearest_label_score": float(label_score),
                 })
                 continue
+            pts = points_for_drawings([d], spacing=0.20, curve_steps=32)
+            if pts.shape[0] < 5:
+                continue
+            desc = descriptor_for_drawings([d], pts)
             best_t = None
             best_score = None
             for t in templates:
