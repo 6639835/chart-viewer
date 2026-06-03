@@ -19,6 +19,8 @@ interface ChartListProps {
   onToggleBookmark: (chart: ChartData, category: ChartCategory) => void;
 }
 
+const LONG_CHART_NAME_LENGTH = 34;
+
 // Extract runway information from chart name
 function extractRunways(chartName: string): string[] {
   const runways: string[] = [];
@@ -231,10 +233,13 @@ export default function ChartList({
               const isSup = chart.IS_SUP === "Y";
               const isModified = chart.IS_MODIFIED === "Y";
               const isBookmarked = bookmarkedCharts.has(chart.ChartId);
+              const displayName = getDisplayName(chart);
+              const isLongName = displayName.length >= LONG_CHART_NAME_LENGTH;
               return (
                 <div key={chart.ChartId} className="relative">
                   <button
                     onClick={() => onChartSelect(chart)}
+                    title={displayName}
                     className={`w-full p-4 pr-12 rounded-lg transition-colors text-left ${
                       selectedChart?.ChartId === chart.ChartId
                         ? "bg-blue-500 text-white shadow-lg"
@@ -258,8 +263,8 @@ export default function ChartList({
                         }`}
                       />
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm sm:text-base mb-2 line-clamp-2 leading-snug break-words">
-                          {getDisplayName(chart)}
+                        <p className="font-semibold text-sm sm:text-base mb-2 leading-snug break-words whitespace-normal text-pretty">
+                          {displayName}
                         </p>
                         <p
                           className={`text-xs sm:text-sm mb-1 truncate ${
@@ -270,7 +275,7 @@ export default function ChartList({
                         >
                           {chart.PAGE_NUMBER}
                         </p>
-                        {chart.ChartTypeEx_CH && (
+                        {!isLongName && chart.ChartTypeEx_CH && (
                           <p
                             className={`text-xs truncate ${
                               selectedChart?.ChartId === chart.ChartId
@@ -400,10 +405,14 @@ export default function ChartList({
                     const isSup = chart.IS_SUP === "Y";
                     const isModified = chart.IS_MODIFIED === "Y";
                     const isBookmarked = bookmarkedCharts.has(chart.ChartId);
+                    const displayName = getDisplayName(chart);
+                    const isLongName =
+                      displayName.length >= LONG_CHART_NAME_LENGTH;
                     return (
                       <div key={chart.ChartId} className="relative">
                         <button
                           onClick={() => onChartSelect(chart)}
+                          title={displayName}
                           className={`w-full p-4 pr-12 rounded-lg transition-colors text-left ${
                             selectedChart?.ChartId === chart.ChartId
                               ? "bg-blue-500 text-white shadow-lg"
@@ -427,8 +436,8 @@ export default function ChartList({
                               }`}
                             />
                             <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-sm sm:text-base mb-2 line-clamp-2 leading-snug break-words">
-                                {getDisplayName(chart)}
+                              <p className="font-semibold text-sm sm:text-base mb-2 leading-snug break-words whitespace-normal text-pretty">
+                                {displayName}
                               </p>
                               <p
                                 className={`text-xs sm:text-sm mb-1 truncate ${
@@ -439,7 +448,7 @@ export default function ChartList({
                               >
                                 {chart.PAGE_NUMBER}
                               </p>
-                              {chart.ChartTypeEx_CH && (
+                              {!isLongName && chart.ChartTypeEx_CH && (
                                 <p
                                   className={`text-xs truncate ${
                                     selectedChart?.ChartId === chart.ChartId
