@@ -37,6 +37,7 @@ import { ChartData, isGeoreferenceable } from "@/types/chart";
 import type { GeorefPageResult } from "@/types/georef";
 import type { OwnshipPosition } from "@/lib/gdl90";
 import { worldToPdfPixels } from "@/lib/georefMath";
+import type { GeorefPdfBounds } from "@/lib/georefMath";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -49,13 +50,15 @@ interface PDFViewerProps {
   onOpenSidebar?: () => void;
   bookmarkedCharts: ChartData[];
   onNavigateToBookmark: (direction: "next" | "prev") => void;
+  onPageChange?: (pageNumber: number) => void;
   onShowOnMap?: (pageNumber: number) => void;
   georefLoading?: boolean;
+  georefReady?: boolean;
   getPageImageRef?: MutableRefObject<
     | ((
         pageNumber: number,
-        options?: { darkMode?: boolean }
-      ) => Promise<string | null>)
+        options?: { darkMode?: boolean; cropBounds?: GeorefPdfBounds }
+      ) => Promise<{ url: string; width: number; height: number } | null>)
     | null
   >;
   ownshipPosition?: OwnshipPosition | null;
@@ -450,8 +453,10 @@ export default function PDFViewer({
   onOpenSidebar,
   bookmarkedCharts,
   onNavigateToBookmark,
+  onPageChange,
   onShowOnMap,
   georefLoading,
+  georefReady,
   getPageImageRef,
   ownshipPosition,
   georefPage,
@@ -663,20 +668,28 @@ export default function PDFViewer({
 
     getPageImageRef.current = async (
       requestedPageNumber: number,
-      options?: { darkMode?: boolean }
+      options?: { darkMode?: boolean; cropBounds?: GeorefPdfBounds }
     ) => {
       const page = await getPage(requestedPageNumber);
       if (!page) return null;
 
       const baseViewport = page.getViewport({ scale: 1, rotation: 0 });
+      const cropBounds = options?.cropBounds ?? {
+        left: 0,
+        top: 0,
+        right: baseViewport.width,
+        bottom: baseViewport.height,
+      };
+      const cropWidth = Math.max(cropBounds.right - cropBounds.left, 1);
+      const cropHeight = Math.max(cropBounds.bottom - cropBounds.top, 1);
       const overlayScale = getGlobeOverlayScale({
-        width: baseViewport.width,
-        height: baseViewport.height,
+        width: cropWidth,
+        height: cropHeight,
       });
       const viewport = page.getViewport({ scale: overlayScale, rotation: 0 });
       const canvas = document.createElement("canvas");
-      const width = Math.floor(viewport.width);
-      const height = Math.floor(viewport.height);
+      const width = Math.floor(cropWidth * overlayScale);
+      const height = Math.floor(cropHeight * overlayScale);
       const context = canvas.getContext("2d", { alpha: false });
 
       if (!context || width <= 0 || height <= 0) {
@@ -693,6 +706,14 @@ export default function PDFViewer({
         canvas,
         canvasContext: context,
         viewport,
+        transform: [
+          1,
+          0,
+          0,
+          1,
+          -cropBounds.left * overlayScale,
+          -cropBounds.top * overlayScale,
+        ],
         background: "rgb(255,255,255)",
         annotationMode: pdfjs.AnnotationMode.DISABLE,
       });
@@ -703,11 +724,12 @@ export default function PDFViewer({
         if (options?.darkMode) {
           applyDarkPdfCanvasFilter(canvas);
         }
-        return await canvasToBlobUrl(
+        const url = await canvasToBlobUrl(
           canvas,
           GLOBE_OVERLAY_IMAGE_TYPE,
           GLOBE_OVERLAY_IMAGE_QUALITY
         );
+        return url ? { url, width, height } : null;
       } catch (error) {
         if (isPdfRenderCancellation(error)) {
           return null;
@@ -781,7 +803,8 @@ export default function PDFViewer({
 
   useEffect(() => {
     latestPageNumberRef.current = pageNumber;
-  }, [pageNumber]);
+    onPageChange?.(pageNumber);
+  }, [onPageChange, pageNumber]);
 
   useLayoutEffect(() => {
     const zoomAnchor = zoomAnchorRef.current;
@@ -1295,7 +1318,7 @@ export default function PDFViewer({
             <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
 
-          {isGeoreferenceable(chart) && onShowOnMap && (
+          {isGeoreferenceable(chart) && onShowOnMap && georefReady && (
             <button
               onClick={() => onShowOnMap(pageNumber)}
               disabled={!!georefLoading}
@@ -1412,7 +1435,14 @@ export default function PDFViewer({
             />
             {/* Ownship ADS-B aircraft overlay */}
             {(() => {
-              if (!ownshipPosition || !georefPage?.transform || !pageSize || !visibleScale || rotation !== 0) return null;
+              if (
+                !ownshipPosition ||
+                !georefPage?.transform ||
+                !pageSize ||
+                !visibleScale ||
+                rotation !== 0
+              )
+                return null;
               const pdfXY = worldToPdfPixels(
                 georefPage,
                 ownshipPosition.lon,
@@ -1425,9 +1455,16 @@ export default function PDFViewer({
               const trackDeg = ownshipPosition.trackDeg ?? 0;
 
               const metaParts: string[] = [];
-              if (ownshipPosition.altitudeFt !== null) metaParts.push(`${Math.round(ownshipPosition.altitudeFt)} ft`);
-              if (ownshipPosition.groundSpeedKt !== null) metaParts.push(`${Math.round(ownshipPosition.groundSpeedKt)} kt`);
-              if (ownshipPosition.trackDeg !== null) metaParts.push(`HDG ${Math.round(ownshipPosition.trackDeg).toString().padStart(3, "0")}°`);
+              if (ownshipPosition.altitudeFt !== null)
+                metaParts.push(`${Math.round(ownshipPosition.altitudeFt)} ft`);
+              if (ownshipPosition.groundSpeedKt !== null)
+                metaParts.push(
+                  `${Math.round(ownshipPosition.groundSpeedKt)} kt`
+                );
+              if (ownshipPosition.trackDeg !== null)
+                metaParts.push(
+                  `HDG ${Math.round(ownshipPosition.trackDeg).toString().padStart(3, "0")}°`
+                );
               const metaText = metaParts.join("  ·  ");
 
               return (
@@ -1442,13 +1479,22 @@ export default function PDFViewer({
                     viewBox="0 0 32 32"
                     style={{
                       transform: `translate(-50%, -50%) rotate(${trackDeg}deg)`,
-                      filter: "drop-shadow(0 0 3px rgba(0,0,0,0.85)) drop-shadow(0 0 1px rgba(0,0,0,1))",
+                      filter:
+                        "drop-shadow(0 0 3px rgba(0,0,0,0.85)) drop-shadow(0 0 1px rgba(0,0,0,1))",
                       position: "absolute",
                     }}
                   >
                     {/* Top-view aircraft silhouette, nose pointing up (0° = north) */}
                     {/* Fuselage */}
-                    <ellipse cx="16" cy="16" rx="3" ry="11" fill="#3b82f6" stroke="white" strokeWidth="1.2" />
+                    <ellipse
+                      cx="16"
+                      cy="16"
+                      rx="3"
+                      ry="11"
+                      fill="#3b82f6"
+                      stroke="white"
+                      strokeWidth="1.2"
+                    />
                     {/* Wings */}
                     <path
                       d="M16,13 L2,20 L6,21 L16,17 L26,21 L30,20 Z"

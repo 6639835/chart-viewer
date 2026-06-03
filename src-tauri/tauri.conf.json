@@ -31,7 +31,11 @@
     "category": "Utility",
     "icon": ["../public/icon.png", "../public/icon.ico", "../public/icon.icns"],
     "externalBin": ["binaries/georef-sidecar"],
-    "resources": ["resources/georef_script.py"],
+    "resources": [
+      "resources/georef_script.py",
+      "resources/pdf_symbol_matcher",
+      "resources/symbol_library"
+    ],
     "macOS": {
       "hardenedRuntime": true,
       "signingIdentity": null

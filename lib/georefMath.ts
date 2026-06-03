@@ -14,6 +14,15 @@ function mercatorToLonLat(x: number, y: number): [number, number] {
   return [lon, lat];
 }
 
+function lonLatToMercator(lon: number, lat: number): [number, number] {
+  const clampedLat = clamp(lat, -89.5, 89.5);
+  return [
+    lon * (Math.PI / 180) * EARTH_RADIUS,
+    Math.log(Math.tan(Math.PI / 4 + (clampedLat * Math.PI) / 180 / 2)) *
+      EARTH_RADIUS,
+  ];
+}
+
 function normalizeLongitude(lon: number) {
   return ((((lon + 180) % 360) + 360) % 360) - 180;
 }
@@ -132,13 +141,147 @@ function finiteNumber(value: number) {
   return Number.isFinite(value);
 }
 
-function getGeographicPdfBounds(page: GeorefPageResult) {
+type DisplayControlPoint = {
+  waypoint: string;
+  mupdfX: number;
+  mupdfY: number;
+  lon: number;
+  lat: number;
+};
+
+function validDisplayControls(page: GeorefPageResult): DisplayControlPoint[] {
+  const controls = page.controlPoints ?? [];
+  const used = controls.filter((point) => point.used);
+  const source = used.length >= 2 ? used : controls;
+  const unique = new Map<string, DisplayControlPoint>();
+
+  for (const point of source) {
+    if (
+      !finiteNumber(point.mupdfX) ||
+      !finiteNumber(point.mupdfY) ||
+      !finiteNumber(point.lon) ||
+      !finiteNumber(point.lat)
+    ) {
+      continue;
+    }
+
+    const key = `${point.waypoint}:${point.lon.toFixed(6)}:${point.lat.toFixed(6)}`;
+    if (!unique.has(key)) {
+      unique.set(key, {
+        waypoint: point.waypoint,
+        mupdfX: point.mupdfX,
+        mupdfY: point.mupdfY,
+        lon: point.lon,
+        lat: point.lat,
+      });
+    }
+  }
+
+  return [...unique.values()];
+}
+
+export function hasDisplayGcpOverlay(page: GeorefPageResult | null | undefined) {
+  if (!page) return false;
+  const controls = validDisplayControls(page);
+  if (controls.length < 2) return false;
+
+  const pdfSpan = controls.reduce((maxSpan, point, index) => {
+    for (let nextIndex = index + 1; nextIndex < controls.length; nextIndex += 1) {
+      const next = controls[nextIndex];
+      maxSpan = Math.max(
+        maxSpan,
+        Math.hypot(point.mupdfX - next.mupdfX, point.mupdfY - next.mupdfY)
+      );
+    }
+    return maxSpan;
+  }, 0);
+
+  const worldSpan = controls.reduce((maxSpan, point, index) => {
+    const [x, y] = lonLatToMercator(point.lon, point.lat);
+    for (let nextIndex = index + 1; nextIndex < controls.length; nextIndex += 1) {
+      const next = controls[nextIndex];
+      const [nx, ny] = lonLatToMercator(next.lon, next.lat);
+      maxSpan = Math.max(maxSpan, Math.hypot(x - nx, y - ny));
+    }
+    return maxSpan;
+  }, 0);
+
+  return pdfSpan > 1 && worldSpan > 1;
+}
+
+function fitDisplaySimilarityTransform(page: GeorefPageResult) {
+  const controls = validDisplayControls(page);
+  if (!hasDisplayGcpOverlay(page)) return null;
+
+  const pdfMean = controls.reduce(
+    (sum, point) => ({
+      x: sum.x + point.mupdfX,
+      y: sum.y - point.mupdfY,
+    }),
+    { x: 0, y: 0 }
+  );
+  pdfMean.x /= controls.length;
+  pdfMean.y /= controls.length;
+
+  const worldPoints = controls.map((point) => lonLatToMercator(point.lon, point.lat));
+  const worldMean = worldPoints.reduce(
+    (sum, [x, y]) => ({ x: sum.x + x, y: sum.y + y }),
+    { x: 0, y: 0 }
+  );
+  worldMean.x /= worldPoints.length;
+  worldMean.y /= worldPoints.length;
+
+  let numeratorA = 0;
+  let numeratorB = 0;
+  let denominator = 0;
+
+  controls.forEach((point, index) => {
+    const x = point.mupdfX - pdfMean.x;
+    const y = -point.mupdfY - pdfMean.y;
+    const [worldX, worldY] = worldPoints[index];
+    const u = worldX - worldMean.x;
+    const v = worldY - worldMean.y;
+    numeratorA += x * u + y * v;
+    numeratorB += x * v - y * u;
+    denominator += x * x + y * y;
+  });
+
+  if (denominator <= 1e-9) return null;
+
+  const a = numeratorA / denominator;
+  const b = numeratorB / denominator;
+  return {
+    a,
+    b,
+    tx: worldMean.x - a * pdfMean.x + b * pdfMean.y,
+    ty: worldMean.y - b * pdfMean.x - a * pdfMean.y,
+  };
+}
+
+function applyDisplaySimilarityTransform(
+  transform: NonNullable<ReturnType<typeof fitDisplaySimilarityTransform>>,
+  x: number,
+  y: number
+): [number, number] {
+  const yUp = -y;
+  return [
+    transform.a * x - transform.b * yUp + transform.tx,
+    transform.b * x + transform.a * yUp + transform.ty,
+  ];
+}
+
+export interface GeorefPdfBounds {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+function getGeographicPdfBounds(page: GeorefPageResult): GeorefPdfBounds {
   const usedControls =
     page.controlPoints?.filter(
       (point) =>
-        point.used &&
-        finiteNumber(point.mupdfX) &&
-        finiteNumber(point.mupdfY)
+        point.used && finiteNumber(point.mupdfX) && finiteNumber(point.mupdfY)
     ) ?? [];
 
   if (usedControls.length < 4) {
@@ -169,87 +312,79 @@ function getGeographicPdfBounds(page: GeorefPageResult) {
   };
 }
 
-type PdfControlPoint = { x: number; y: number };
-
-function cross(o: PdfControlPoint, a: PdfControlPoint, b: PdfControlPoint) {
-  return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+export function computeGeographicPdfBounds(
+  page: GeorefPageResult
+): GeorefPdfBounds {
+  return getGeographicPdfBounds(page);
 }
 
-function convexHull(points: PdfControlPoint[]) {
-  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-  if (sorted.length <= 1) return sorted;
+export function computeDisplayPageCorners(
+  page: GeorefPageResult,
+  bounds: GeorefPdfBounds = {
+    left: 0,
+    top: 0,
+    right: page.pageWidth,
+    bottom: page.pageHeight,
+  }
+): ChartCorners | null {
+  const transform = fitDisplaySimilarityTransform(page);
+  if (!transform) return null;
 
-  const lower: PdfControlPoint[] = [];
-  for (const point of sorted) {
-    while (
-      lower.length >= 2 &&
-      cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0
-    ) {
-      lower.pop();
-    }
-    lower.push(point);
+  const pointToLonLat = (x: number, y: number) =>
+    mercatorToLonLat(...applyDisplaySimilarityTransform(transform, x, y));
+
+  const topLeft = pointToLonLat(bounds.left, bounds.top);
+  const topRight = pointToLonLat(bounds.right, bounds.top);
+  const bottomRight = pointToLonLat(bounds.right, bounds.bottom);
+  const bottomLeft = pointToLonLat(bounds.left, bounds.bottom);
+  const corners = [topLeft, topRight, bottomRight, bottomLeft];
+
+  const samples = [...corners];
+  for (let i = 1; i < 8; i += 1) {
+    const tx = bounds.left + ((bounds.right - bounds.left) * i) / 8;
+    const ty = bounds.top + ((bounds.bottom - bounds.top) * i) / 8;
+    samples.push(
+      pointToLonLat(tx, bounds.top),
+      pointToLonLat(bounds.right, ty),
+      pointToLonLat(bounds.right - (tx - bounds.left), bounds.bottom),
+      pointToLonLat(bounds.left, bounds.bottom - (ty - bounds.top))
+    );
   }
 
-  const upper: PdfControlPoint[] = [];
-  for (let index = sorted.length - 1; index >= 0; index -= 1) {
-    const point = sorted[index];
-    while (
-      upper.length >= 2 &&
-      cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0
-    ) {
-      upper.pop();
+  const lons = samples.map(([lon]) => lon);
+  const lats = samples.map(([, lat]) => lat);
+  const { west, east } = longitudeBounds(lons);
+  const columns = 9;
+  const rows = 9;
+  const vertices = [];
+
+  for (let row = 0; row < rows; row += 1) {
+    const rowFraction = row / (rows - 1);
+    const y = bounds.top + (bounds.bottom - bounds.top) * rowFraction;
+    for (let column = 0; column < columns; column += 1) {
+      const columnFraction = column / (columns - 1);
+      const x = bounds.left + (bounds.right - bounds.left) * columnFraction;
+      const [lon, lat] = pointToLonLat(x, y);
+      vertices.push({
+        lon,
+        lat,
+        u: x / page.pageWidth,
+        v: y / page.pageHeight,
+      });
     }
-    upper.push(point);
   }
 
-  return lower.slice(0, -1).concat(upper.slice(0, -1));
-}
-
-function expandPolygon(
-  points: PdfControlPoint[],
-  pageWidth: number,
-  pageHeight: number,
-  margin: number
-) {
-  const center = {
-    x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
-    y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
+  return {
+    west,
+    east,
+    south: Math.min(...lats),
+    north: Math.max(...lats),
+    topLeft: { lon: topLeft[0], lat: topLeft[1] },
+    topRight: { lon: topRight[0], lat: topRight[1] },
+    bottomRight: { lon: bottomRight[0], lat: bottomRight[1] },
+    bottomLeft: { lon: bottomLeft[0], lat: bottomLeft[1] },
+    mesh: { columns, rows, vertices },
   };
-
-  return points.map((point) => {
-    const dx = point.x - center.x;
-    const dy = point.y - center.y;
-    const length = Math.hypot(dx, dy) || 1;
-    return {
-      x: clamp(point.x + (dx / length) * margin, 0, pageWidth),
-      y: clamp(point.y + (dy / length) * margin, 0, pageHeight),
-    };
-  });
-}
-
-function getGeographicPdfPolygon(page: GeorefPageResult) {
-  const usedControls =
-    page.controlPoints?.filter(
-      (point) =>
-        point.used &&
-        finiteNumber(point.mupdfX) &&
-        finiteNumber(point.mupdfY)
-    ) ?? [];
-
-  if (usedControls.length < 4) return null;
-
-  const hull = convexHull(
-    usedControls.map((point) => ({ x: point.mupdfX, y: point.mupdfY }))
-  );
-  if (hull.length < 3) return null;
-
-  const bounds = getGeographicPdfBounds(page);
-  const margin = clamp(
-    Math.min(bounds.right - bounds.left, bounds.bottom - bounds.top) * 0.08,
-    18,
-    45
-  );
-  return expandPolygon(hull, page.pageWidth, page.pageHeight, margin);
 }
 
 /**
@@ -287,7 +422,8 @@ export function worldToPdfPixels(
   if (!page.transform) return null;
   // Convert lon/lat to Web Mercator
   const mx = lon * (Math.PI / 180) * EARTH_RADIUS;
-  const my = Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI / 180) / 2)) * EARTH_RADIUS;
+  const my =
+    Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 180 / 2)) * EARTH_RADIUS;
 
   // Affine forward: [mx, my] = [a, c, e; b, d, f] * [x, y, 1]
   const [a, b, c, d, e, f] = page.transform;
@@ -303,26 +439,34 @@ export function worldToPdfPixels(
 
   // Clamp to page bounds with a small margin to avoid false negatives at edges
   const margin = 10;
-  if (x < -margin || x > page.pageWidth + margin || y < -margin || y > page.pageHeight + margin) return null;
+  if (
+    x < -margin ||
+    x > page.pageWidth + margin ||
+    y < -margin ||
+    y > page.pageHeight + margin
+  )
+    return null;
 
   return [x, y];
 }
 
 /**
- * Compute the geographic overlay region for a georeferenced PDF page.
- * Procedure PDFs include non-geographic headers, tables, and title blocks, so
- * the map overlay is clipped to the used-control region instead of the full page.
+ * Compute the geographic overlay region for a rendered PDF crop.
  */
 export function computePageCorners(
-  page: GeorefPageResult
+  page: GeorefPageResult,
+  bounds: GeorefPdfBounds = getGeographicPdfBounds(page)
 ): ChartCorners {
   const pageWidth = page.pageWidth;
   const pageHeight = page.pageHeight;
-  const bounds = getGeographicPdfBounds(page);
   const topLeft = pagePointToLonLat(page, bounds.left, bounds.top) ?? [0, 0];
   const topRight = pagePointToLonLat(page, bounds.right, bounds.top) ?? [0, 0];
-  const bottomRight = pagePointToLonLat(page, bounds.right, bounds.bottom) ?? [0, 0];
-  const bottomLeft = pagePointToLonLat(page, bounds.left, bounds.bottom) ?? [0, 0];
+  const bottomRight = pagePointToLonLat(page, bounds.right, bounds.bottom) ?? [
+    0, 0,
+  ];
+  const bottomLeft = pagePointToLonLat(page, bounds.left, bounds.bottom) ?? [
+    0, 0,
+  ];
   const corners = [topLeft, topRight, bottomRight, bottomLeft];
 
   const samples = [...corners];
@@ -343,30 +487,6 @@ export function computePageCorners(
   const { west, east } = longitudeBounds(lons);
 
   const mesh = (() => {
-    const polygon = getGeographicPdfPolygon(page);
-    if (polygon) {
-      const vertices = polygon
-        .map((pdfPoint) => {
-          const point = pagePointToLonLat(page, pdfPoint.x, pdfPoint.y);
-          if (!point) return null;
-          return {
-            lon: point[0],
-            lat: point[1],
-            u: pdfPoint.x / pageWidth,
-            v: pdfPoint.y / pageHeight,
-          };
-        })
-        .filter((vertex): vertex is NonNullable<typeof vertex> => vertex !== null);
-
-      if (vertices.length === polygon.length && vertices.length >= 3) {
-        const triangles: [number, number, number][] = [];
-        for (let index = 1; index < vertices.length - 1; index += 1) {
-          triangles.push([0, index, index + 1]);
-        }
-        return { vertices, triangles };
-      }
-    }
-
     const columns = 9;
     const rows = 9;
     const vertices = [];
@@ -407,7 +527,10 @@ export function computeProcedureOverlay(
 ): ChartProcedureOverlay {
   const points =
     page.controlPoints
-      ?.filter((point) => point.used && finiteNumber(point.lon) && finiteNumber(point.lat))
+      ?.filter(
+        (point) =>
+          point.used && finiteNumber(point.lon) && finiteNumber(point.lat)
+      )
       .map((point) => ({
         waypoint: point.waypoint,
         source: point.source,

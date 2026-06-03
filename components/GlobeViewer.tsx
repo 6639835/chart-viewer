@@ -11,15 +11,17 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import type { ChartCorners, ChartProcedureOverlay } from "@/types/georef";
+import type { ChartCorners, ChartOverlayMesh } from "@/types/georef";
 import type { AirportCoord } from "@/lib/tauriClient";
 import type { OwnshipPosition } from "@/lib/gdl90";
 
 export interface ChartOverlayData {
   chartId: string;
   pageNumber: number;
+  imageUrl: string;
+  imageWidth: number;
+  imageHeight: number;
   corners: ChartCorners;
-  procedureOverlay: ChartProcedureOverlay;
 }
 
 interface GlobeViewerProps {
@@ -108,9 +110,8 @@ const CURSOR_STATUS_UPDATE_MS = 80;
 const ALTITUDE_UPDATE_RATIO = 0.01;
 const HEADING_UPDATE_DEGREES = 0.5;
 const CURSOR_UPDATE_DEGREES = 0.00005;
-const MAP_PLANE_HEIGHT_METERS = 0;
-const CHART_OVERLAY_HEIGHT_METERS = MAP_PLANE_HEIGHT_METERS;
-const AIRCRAFT_MARKER_HEIGHT_METERS = MAP_PLANE_HEIGHT_METERS;
+const AIRCRAFT_MARKER_HEIGHT_METERS = 0;
+const CHART_OVERLAY_HEIGHT_METERS = 150;
 
 interface ClientPoint {
   clientX: number;
@@ -287,12 +288,13 @@ function getChartOverlayRectangle(
 }
 
 function getChartOverlayKey(chartOverlay: ChartOverlayData) {
-  const { corners, procedureOverlay } = chartOverlay;
-  const firstPoint = procedureOverlay.points[0];
-  const lastPoint = procedureOverlay.points.at(-1);
-  const firstPath = procedureOverlay.paths[0];
-  const lastPath = procedureOverlay.paths.at(-1);
+  const { corners } = chartOverlay;
   return [
+    chartOverlay.chartId,
+    chartOverlay.pageNumber,
+    chartOverlay.imageUrl,
+    chartOverlay.imageWidth,
+    chartOverlay.imageHeight,
     corners.topLeft.lon,
     corners.topLeft.lat,
     corners.topRight.lon,
@@ -301,149 +303,156 @@ function getChartOverlayKey(chartOverlay: ChartOverlayData) {
     corners.bottomRight.lat,
     corners.bottomLeft.lon,
     corners.bottomLeft.lat,
-    procedureOverlay.points.length,
-    procedureOverlay.paths.length,
-    firstPoint?.waypoint,
-    firstPoint?.lon,
-    lastPoint?.waypoint,
-    lastPoint?.lon,
-    firstPath?.positions[0]?.lon,
-    lastPath?.positions.at(-1)?.lon,
+    corners.mesh?.vertices.length,
+    corners.mesh?.triangles?.length,
   ].join("|");
 }
 
-function pathPositionsToCartesian(
-  Cesium: typeof import("cesium"),
-  positions: { lon: number; lat: number }[]
-) {
-  return positions.map((position) =>
-    Cesium.Cartesian3.fromDegrees(
-      position.lon,
-      position.lat,
-      CHART_OVERLAY_HEIGHT_METERS
-    )
-  );
+function chartOverlayFallbackMesh(
+  chartOverlay: ChartOverlayData
+): Required<Pick<ChartOverlayMesh, "vertices" | "triangles">> {
+  const { corners } = chartOverlay;
+  return {
+    vertices: [
+      { ...corners.topLeft, u: 0, v: 0 },
+      { ...corners.topRight, u: 1, v: 0 },
+      { ...corners.bottomRight, u: 1, v: 1 },
+      { ...corners.bottomLeft, u: 0, v: 1 },
+    ],
+    triangles: [
+      [0, 1, 2],
+      [0, 2, 3],
+    ],
+  };
 }
 
-function createChartOverlayDataSource(
+function getChartOverlayMesh(chartOverlay: ChartOverlayData) {
+  const mesh = chartOverlay.corners.mesh;
+  if (!mesh || mesh.vertices.length < 3) {
+    return chartOverlayFallbackMesh(chartOverlay);
+  }
+
+  if (mesh.triangles?.length) {
+    return { vertices: mesh.vertices, triangles: mesh.triangles };
+  }
+
+  if (!mesh.columns || !mesh.rows || mesh.columns < 2 || mesh.rows < 2) {
+    return chartOverlayFallbackMesh(chartOverlay);
+  }
+
+  const triangles: [number, number, number][] = [];
+  for (let row = 0; row < mesh.rows - 1; row += 1) {
+    for (let column = 0; column < mesh.columns - 1; column += 1) {
+      const topLeft = row * mesh.columns + column;
+      const topRight = topLeft + 1;
+      const bottomLeft = topLeft + mesh.columns;
+      const bottomRight = bottomLeft + 1;
+      triangles.push([topLeft, topRight, bottomRight]);
+      triangles.push([topLeft, bottomRight, bottomLeft]);
+    }
+  }
+
+  return { vertices: mesh.vertices, triangles };
+}
+
+function loadOverlayImage(imageUrl: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () =>
+      reject(new Error("Chart overlay image failed to load"));
+    image.src = imageUrl;
+  });
+}
+
+function createChartOverlayPrimitive(
   Cesium: typeof import("cesium"),
   chartOverlay: ChartOverlayData,
+  image: HTMLImageElement,
   alpha: number
 ) {
-  const dataSource = new Cesium.CustomDataSource("procedure-overlay");
-  const lineAlpha = clamp(alpha, 0.15, 1);
-  const labelAlpha = clamp(alpha * 1.1, 0.2, 1);
+  const mesh = getChartOverlayMesh(chartOverlay);
+  const positions = new Float64Array(mesh.vertices.length * 3);
+  const textureCoordinates = new Float32Array(mesh.vertices.length * 2);
 
-  for (const path of chartOverlay.procedureOverlay.paths) {
-    const positions = pathPositionsToCartesian(Cesium, path.positions);
-    if (positions.length < 2) continue;
-    const width = clamp(path.lineWidth * 1.6, 2, 7);
-    dataSource.entities.add({
-      name: "procedure-outline",
-      polyline: {
-        positions,
-        width: width + 3,
-        arcType: Cesium.ArcType.RHUMB,
-        clampToGround: false,
-        material: new Cesium.PolylineOutlineMaterialProperty({
-          color: Cesium.Color.WHITE.withAlpha(lineAlpha * 0.65),
-          outlineColor: Cesium.Color.WHITE.withAlpha(lineAlpha * 0.2),
-          outlineWidth: 1,
-        }),
-      },
-    });
-    dataSource.entities.add({
-      name: "procedure-line",
-      polyline: {
-        positions,
-        width,
-        arcType: Cesium.ArcType.RHUMB,
-        clampToGround: false,
-        material: new Cesium.ColorMaterialProperty(
-          Cesium.Color.BLACK.withAlpha(lineAlpha)
-        ),
-      },
-    });
-  }
+  mesh.vertices.forEach((vertex, index) => {
+    const cartesian = Cesium.Cartesian3.fromDegrees(
+      vertex.lon,
+      vertex.lat,
+      CHART_OVERLAY_HEIGHT_METERS
+    );
+    positions[index * 3] = cartesian.x;
+    positions[index * 3 + 1] = cartesian.y;
+    positions[index * 3 + 2] = cartesian.z;
+    textureCoordinates[index * 2] = clamp(vertex.u, 0, 1);
+    textureCoordinates[index * 2 + 1] = clamp(1 - vertex.v, 0, 1);
+  });
 
-  for (const point of chartOverlay.procedureOverlay.points) {
-    const isNavaid = point.source === "navaid_symbol";
-    dataSource.entities.add({
-      name: isNavaid ? "procedure-navaid" : "procedure-fix",
-      position: Cesium.Cartesian3.fromDegrees(
-        point.lon,
-        point.lat,
-        CHART_OVERLAY_HEIGHT_METERS
-      ),
-      point: {
-        pixelSize: isNavaid ? 10 : 8,
-        color: (isNavaid ? Cesium.Color.SKYBLUE : Cesium.Color.WHITE).withAlpha(
-          labelAlpha
-        ),
-        outlineColor: Cesium.Color.BLACK.withAlpha(labelAlpha),
-        outlineWidth: 2,
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      },
-      label: {
-        text: point.waypoint,
-        font: "bold 13px sans-serif",
-        fillColor: Cesium.Color.BLACK.withAlpha(labelAlpha),
-        outlineColor: Cesium.Color.WHITE.withAlpha(labelAlpha),
-        outlineWidth: 4,
-        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        pixelOffset: new Cesium.Cartesian2(10, -12),
-        verticalOrigin: Cesium.VerticalOrigin.CENTER,
-        horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-        heightReference: Cesium.HeightReference.NONE,
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      },
-    });
-  }
+  const geometryAttributes = {
+    position: new Cesium.GeometryAttribute({
+      componentDatatype: Cesium.ComponentDatatype.DOUBLE,
+      componentsPerAttribute: 3,
+      values: positions,
+    }),
+    st: new Cesium.GeometryAttribute({
+      componentDatatype: Cesium.ComponentDatatype.FLOAT,
+      componentsPerAttribute: 2,
+      values: textureCoordinates,
+    }),
+  } as unknown as import("cesium").GeometryAttributes;
 
-  return dataSource;
+  const geometry = new Cesium.Geometry({
+    attributes: geometryAttributes,
+    indices:
+      mesh.vertices.length > 65535
+        ? new Uint32Array(mesh.triangles.flat())
+        : new Uint16Array(mesh.triangles.flat()),
+    primitiveType: Cesium.PrimitiveType.TRIANGLES,
+    boundingSphere: Cesium.BoundingSphere.fromVertices(positions),
+  });
+
+  const material = new Cesium.Material({
+    fabric: {
+      type: "Image",
+      uniforms: {
+        image,
+        color: Cesium.Color.WHITE.withAlpha(clamp(alpha, 0.1, 1)),
+      },
+    },
+  });
+
+  return new Cesium.Primitive({
+    geometryInstances: new Cesium.GeometryInstance({ geometry }),
+    appearance: new Cesium.EllipsoidSurfaceAppearance({
+      material,
+      translucent: true,
+      aboveGround: true,
+      flat: true,
+      faceForward: true,
+      renderState: {
+        depthTest: { enabled: false },
+        depthMask: false,
+        cull: { enabled: false },
+        blending: Cesium.BlendingState.ALPHA_BLEND,
+      },
+    }),
+    asynchronous: false,
+  });
 }
 
-function setChartOverlayDataSourceAlpha(
+function setChartOverlayPrimitiveAlpha(
   Cesium: typeof import("cesium"),
-  dataSource: unknown,
+  primitive: unknown,
   alpha: number
 ) {
-  const ds = dataSource as {
-    entities?: {
-      values?: Array<{
-        name?: string;
-        polyline?: { material?: unknown };
-        point?: { color?: unknown; outlineColor?: unknown };
-        label?: { fillColor?: unknown; outlineColor?: unknown };
-      }>;
+  const overlayPrimitive = primitive as {
+    appearance?: {
+      material?: { uniforms?: { color?: import("cesium").Color } };
     };
   };
-  const lineAlpha = clamp(alpha, 0.15, 1);
-  const labelAlpha = clamp(alpha * 1.1, 0.2, 1);
-  for (const entity of ds.entities?.values ?? []) {
-    if (entity.polyline) {
-      if (entity.name === "procedure-outline") {
-        entity.polyline.material = new Cesium.PolylineOutlineMaterialProperty({
-          color: Cesium.Color.WHITE.withAlpha(lineAlpha * 0.65),
-          outlineColor: Cesium.Color.WHITE.withAlpha(lineAlpha * 0.2),
-          outlineWidth: 1,
-        });
-      } else {
-        entity.polyline.material = new Cesium.ColorMaterialProperty(
-          Cesium.Color.BLACK.withAlpha(lineAlpha)
-        );
-      }
-    }
-    if (entity.point) {
-      entity.point.color = (
-        entity.name === "procedure-navaid" ? Cesium.Color.SKYBLUE : Cesium.Color.WHITE
-      ).withAlpha(labelAlpha);
-      entity.point.outlineColor = Cesium.Color.BLACK.withAlpha(labelAlpha);
-    }
-    if (entity.label) {
-      entity.label.fillColor = Cesium.Color.BLACK.withAlpha(labelAlpha);
-      entity.label.outlineColor = Cesium.Color.WHITE.withAlpha(labelAlpha);
-    }
+  if (overlayPrimitive.appearance?.material?.uniforms) {
+    overlayPrimitive.appearance.material.uniforms.color =
+      Cesium.Color.WHITE.withAlpha(clamp(alpha, 0.1, 1));
   }
 }
 
@@ -905,7 +914,8 @@ export default function GlobeViewer({
           }
           lastCursorStatusUpdate = now;
 
-          const canvasPoint = movement.endPosition as import("cesium").Cartesian2;
+          const canvasPoint =
+            movement.endPosition as import("cesium").Cartesian2;
           const pos =
             viewer.camera.pickEllipsoid(
               canvasPoint,
@@ -913,7 +923,9 @@ export default function GlobeViewer({
             ) ??
             (() => {
               const ray = viewer.camera.getPickRay(canvasPoint);
-              return ray ? viewer.scene.globe.pick(ray, viewer.scene) : undefined;
+              return ray
+                ? viewer.scene.globe.pick(ray, viewer.scene)
+                : undefined;
             })();
           if (!pos) {
             if (cursorCoordsRef.current) {
@@ -992,21 +1004,22 @@ export default function GlobeViewer({
 
   // Render chart overlay whenever chartOverlay changes
   useEffect(() => {
+    let cancelled = false;
     const Cesium = cesiumRef.current;
     const rawViewer = viewerRef.current as {
       camera: { flyTo: (opts: unknown) => void };
-      dataSources: {
-        add: (dataSource: unknown) => unknown;
-        remove: (dataSource: unknown, destroy?: boolean) => boolean;
-      };
       scene: {
+        primitives: {
+          add: (primitive: unknown) => unknown;
+          remove: (primitive: unknown) => boolean;
+        };
         requestRender?: () => void;
       };
     } | null;
 
     if (!chartOverlay || !rawViewer || !Cesium) {
       if (overlayLayerRef.current && rawViewer) {
-        rawViewer.dataSources.remove(overlayLayerRef.current, true);
+        rawViewer.scene.primitives.remove(overlayLayerRef.current);
         overlayLayerRef.current = null;
         activeOverlayImageUrlRef.current = null;
         rawViewer.scene.requestRender?.();
@@ -1024,24 +1037,35 @@ export default function GlobeViewer({
 
     const rectangle = getChartOverlayRectangle(Cesium, chartOverlay);
 
-    try {
-      const previousLayer = overlayLayerRef.current;
-      const dataSource = createChartOverlayDataSource(
-        Cesium,
-        chartOverlay,
-        chartOverlayAlphaRef.current
-      );
-      rawViewer.dataSources.add(dataSource);
-      overlayLayerRef.current = dataSource;
-      activeOverlayImageUrlRef.current = overlayKey;
-      if (previousLayer) {
-        rawViewer.dataSources.remove(previousLayer, true);
-      }
-      rawViewer.camera.flyTo({ destination: rectangle, duration: 0.75 });
-      rawViewer.scene.requestRender?.();
-    } catch (error) {
-      console.error("Failed to load chart overlay:", error);
-    }
+    void loadOverlayImage(chartOverlay.imageUrl)
+      .then((image) => {
+        if (cancelled) return;
+
+        const previousLayer = overlayLayerRef.current;
+        const primitive = createChartOverlayPrimitive(
+          Cesium,
+          chartOverlay,
+          image,
+          chartOverlayAlphaRef.current
+        );
+        rawViewer.scene.primitives.add(primitive);
+        overlayLayerRef.current = primitive;
+        activeOverlayImageUrlRef.current = overlayKey;
+        if (previousLayer) {
+          rawViewer.scene.primitives.remove(previousLayer);
+        }
+        rawViewer.camera.flyTo({ destination: rectangle, duration: 0.75 });
+        rawViewer.scene.requestRender?.();
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error("Failed to load chart overlay:", error);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [chartOverlay, viewerReadyKey]);
 
   useEffect(() => {
@@ -1049,7 +1073,7 @@ export default function GlobeViewer({
 
     const Cesium = cesiumRef.current;
     if (!overlayLayerRef.current || !Cesium) return;
-    setChartOverlayDataSourceAlpha(
+    setChartOverlayPrimitiveAlpha(
       Cesium,
       overlayLayerRef.current,
       chartOverlayAlpha
@@ -1093,9 +1117,16 @@ export default function GlobeViewer({
 
     const metaParts: string[] = [];
     if (altitudeFt !== null) metaParts.push(`${Math.round(altitudeFt)} ft`);
-    if (ownshipPosition.groundSpeedKt !== null) metaParts.push(`${Math.round(ownshipPosition.groundSpeedKt)} kt`);
-    if (trackDeg !== null) metaParts.push(`HDG ${Math.round(trackDeg).toString().padStart(3, "0")}°`);
-    const labelText = metaParts.length > 0 ? metaParts.join("  ·  ") : `${lat.toFixed(3)}°  ${lon.toFixed(3)}°`;
+    if (ownshipPosition.groundSpeedKt !== null)
+      metaParts.push(`${Math.round(ownshipPosition.groundSpeedKt)} kt`);
+    if (trackDeg !== null)
+      metaParts.push(
+        `HDG ${Math.round(trackDeg).toString().padStart(3, "0")}°`
+      );
+    const labelText =
+      metaParts.length > 0
+        ? metaParts.join("  ·  ")
+        : `${lat.toFixed(3)}°  ${lon.toFixed(3)}°`;
 
     // If the entity already exists, just update its mutable properties in place.
     if (aircraftEntityRef.current) {
@@ -1147,7 +1178,8 @@ export default function GlobeViewer({
         heightReference: Cesium.HeightReference.NONE,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
         showBackground: true,
-        backgroundColor: Cesium.Color.fromCssColorString("#1e3a5f").withAlpha(0.85),
+        backgroundColor:
+          Cesium.Color.fromCssColorString("#1e3a5f").withAlpha(0.85),
         backgroundPadding: new Cesium.Cartesian2(6, 4),
       },
     });
@@ -1422,12 +1454,19 @@ export default function GlobeViewer({
         {/* Ownship ADS-B indicator */}
         {ownshipPosition && (
           <>
-            <span className="flex items-center gap-1 text-blue-400 font-semibold" title="ADS-B ownship position">
+            <span
+              className="flex items-center gap-1 text-blue-400 font-semibold"
+              title="ADS-B ownship position"
+            >
               <Navigation className="w-3 h-3" />
-              {ownshipPosition.lat.toFixed(4)}° {ownshipPosition.lon.toFixed(4)}°
-              {ownshipPosition.altitudeFt !== null && ` · ${Math.round(ownshipPosition.altitudeFt)} ft`}
-              {ownshipPosition.groundSpeedKt !== null && ` · ${Math.round(ownshipPosition.groundSpeedKt)} kt`}
-              {ownshipPosition.trackDeg !== null && ` · HDG ${Math.round(ownshipPosition.trackDeg).toString().padStart(3, "0")}°`}
+              {ownshipPosition.lat.toFixed(4)}° {ownshipPosition.lon.toFixed(4)}
+              °
+              {ownshipPosition.altitudeFt !== null &&
+                ` · ${Math.round(ownshipPosition.altitudeFt)} ft`}
+              {ownshipPosition.groundSpeedKt !== null &&
+                ` · ${Math.round(ownshipPosition.groundSpeedKt)} kt`}
+              {ownshipPosition.trackDeg !== null &&
+                ` · HDG ${Math.round(ownshipPosition.trackDeg).toString().padStart(3, "0")}°`}
             </span>
             <span className="opacity-40">|</span>
           </>

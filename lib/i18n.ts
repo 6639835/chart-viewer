@@ -31,6 +31,8 @@ export type TranslationKey =
   | "settings.pathFormat"
   | "settings.pathFormatAbsolute"
   | "settings.pathFormatRelative"
+  | "settings.preloadGeoreferences"
+  | "settings.preloadGeoreferencesHelp"
   | "settings.selectChartsDirectory"
   | "settings.selectCsvDirectory"
   | "settings.title"
@@ -130,6 +132,10 @@ export const translations: Record<Locale, Translations> = {
     "settings.pathFormatAbsolute":
       "Or use absolute paths selected with the native picker",
     "settings.pathFormatRelative": "Use relative paths such as {path}",
+    "settings.preloadGeoreferences":
+      "Initialize map georeferences automatically",
+    "settings.preloadGeoreferencesHelp":
+      "Builds and stores georeference data in the background so map buttons only appear when charts are ready.",
     "settings.selectChartsDirectory": "Select Charts Directory",
     "settings.selectCsvDirectory": "Select CSV Directory",
     "settings.title": "Settings",
@@ -217,6 +223,9 @@ export const translations: Record<Locale, Translations> = {
     "settings.pathFormat": "路径格式：",
     "settings.pathFormatAbsolute": "也可以使用原生选择器选择绝对路径",
     "settings.pathFormatRelative": "使用相对路径，例如 {path}",
+    "settings.preloadGeoreferences": "自动初始化地图地理配准",
+    "settings.preloadGeoreferencesHelp":
+      "在后台生成并保存地理配准数据；航图准备好后才显示地图按钮。",
     "settings.selectChartsDirectory": "选择航图目录",
     "settings.selectCsvDirectory": "选择 CSV 目录",
     "settings.title": "设置",

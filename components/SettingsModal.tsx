@@ -38,6 +38,7 @@ export default function SettingsModal({
   const [config, setConfig] = useState<AppConfig>({
     chartsDirectory: "",
     csvDirectory: "",
+    preloadGeoreferences: true,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -322,14 +323,45 @@ export default function SettingsModal({
                   max={65535}
                   value={config.gdl90Port ?? 4000}
                   onChange={(e) =>
-                    setConfig({ ...config, gdl90Port: parseInt(e.target.value, 10) || 4000 })
+                    setConfig({
+                      ...config,
+                      gdl90Port: parseInt(e.target.value, 10) || 4000,
+                    })
                   }
                   autoComplete="off"
                   className="w-40 px-3 sm:px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  UDP port for GDL90 ADS-B data (e.g. ForeFlight broadcasts on 4000). Set to 0 to disable.
+                  UDP port for GDL90 ADS-B data (e.g. ForeFlight broadcasts on
+                  4000). Set to 0 to disable.
                 </p>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <input
+                  id="settings-preload-georeferences"
+                  name="preloadGeoreferences"
+                  type="checkbox"
+                  checked={config.preloadGeoreferences ?? true}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      preloadGeoreferences: e.target.checked,
+                    })
+                  }
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+                />
+                <div>
+                  <label
+                    htmlFor="settings-preload-georeferences"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {t("settings.preloadGeoreferences")}
+                  </label>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {t("settings.preloadGeoreferencesHelp")}
+                  </p>
+                </div>
               </div>
 
               <div>

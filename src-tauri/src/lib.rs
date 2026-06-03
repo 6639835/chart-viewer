@@ -1,13 +1,15 @@
 use encoding_rs::GBK;
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::fs::{self, File};
+use std::hash::{Hash, Hasher};
 use std::io::{Read, Seek, SeekFrom};
 use std::net::UdpSocket;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -23,6 +25,8 @@ const MAX_FULL_PDF_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_PDF_RANGE_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
 const GEOREF_TIMEOUT: Duration = Duration::from_secs(90);
 const MAX_GEOREF_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
+const GEOREF_CACHE_DIR: &str = "georef-cache";
+const GEOREF_CACHE_VERSION: &str = "reference-symbol-matcher-v1";
 
 #[derive(Default)]
 struct PdfPathCache {
@@ -35,6 +39,11 @@ struct Gdl90State {
     port: AtomicU16,
     /// Signal the listener thread to stop.
     stop: AtomicBool,
+}
+
+#[derive(Default)]
+struct GeorefPreloadState {
+    running: AtomicBool,
 }
 
 impl Default for Gdl90State {
@@ -56,7 +65,11 @@ fn gdl90_crc16(data: &[u8]) -> u16 {
         for (i, entry) in t.iter_mut().enumerate() {
             let mut crc: u16 = (i as u16) << 8;
             for _ in 0..8 {
-                crc = if crc & 0x8000 != 0 { (crc << 1) ^ 0x1021 } else { crc << 1 };
+                crc = if crc & 0x8000 != 0 {
+                    (crc << 1) ^ 0x1021
+                } else {
+                    crc << 1
+                };
             }
             *entry = crc;
         }
@@ -76,7 +89,9 @@ fn gdl90_unstuff(raw: &[u8]) -> Vec<u8> {
     while i < raw.len() {
         if raw[i] == 0x7d {
             i += 1;
-            if i < raw.len() { out.push(raw[i] ^ 0x20); }
+            if i < raw.len() {
+                out.push(raw[i] ^ 0x20);
+            }
         } else {
             out.push(raw[i]);
         }
@@ -88,7 +103,11 @@ fn gdl90_unstuff(raw: &[u8]) -> Vec<u8> {
 /// Signed 24-bit from big-endian bytes.
 fn s24(a: u8, b: u8, c: u8) -> i32 {
     let u = ((a as u32) << 16) | ((b as u32) << 8) | (c as u32);
-    if u >= 0x80_0000 { u as i32 - 0x100_0000 } else { u as i32 }
+    if u >= 0x80_0000 {
+        u as i32 - 0x100_0000
+    } else {
+        u as i32
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -103,40 +122,77 @@ struct OwnshipPosition {
 
 /// Parse a GDL90 Ownship Report body (27 bytes after msgID).
 fn decode_ownship_body(body: &[u8]) -> Option<OwnshipPosition> {
-    if body.len() < 27 { return None; }
+    if body.len() < 27 {
+        return None;
+    }
     let lat = s24(body[4], body[5], body[6]) as f64 * (180.0 / 0x80_0000 as f64);
     let lon = s24(body[7], body[8], body[9]) as f64 * (180.0 / 0x80_0000 as f64);
     let alt_raw = ((body[10] as u16) << 4) | ((body[11] >> 4) as u16);
-    let altitude_ft = if alt_raw == 0xfff { None } else { Some(alt_raw as f64 * 25.0 - 1000.0) };
+    let altitude_ft = if alt_raw == 0xfff {
+        None
+    } else {
+        Some(alt_raw as f64 * 25.0 - 1000.0)
+    };
     let misc = body[11] & 0x0f;
     let track_valid = (misc & 0x03) != 0;
     let gs_raw = ((body[13] as u16) << 4) | ((body[14] >> 4) as u16);
-    let ground_speed_kt = if gs_raw == 0xfff { None } else { Some(gs_raw as f64) };
-    let track_deg = if track_valid { Some(body[16] as f64 / 256.0 * 360.0) } else { None };
+    let ground_speed_kt = if gs_raw == 0xfff {
+        None
+    } else {
+        Some(gs_raw as f64)
+    };
+    let track_deg = if track_valid {
+        Some(body[16] as f64 / 256.0 * 360.0)
+    } else {
+        None
+    };
     let nic = (body[12] >> 4) & 0x0f;
-    if nic == 0 && lat == 0.0 && lon == 0.0 { return None; }
-    Some(OwnshipPosition { lat, lon, altitude_ft, track_deg, ground_speed_kt })
+    if nic == 0 && lat == 0.0 && lon == 0.0 {
+        return None;
+    }
+    Some(OwnshipPosition {
+        lat,
+        lon,
+        altitude_ft,
+        track_deg,
+        ground_speed_kt,
+    })
 }
 
 /// Scan a UDP datagram for the first valid GDL90 Ownship Report (msg 10).
 fn parse_gdl90_datagram(buf: &[u8]) -> Option<OwnshipPosition> {
     let mut i = 0;
     while i < buf.len() {
-        if buf[i] != 0x7e { i += 1; continue; }
+        if buf[i] != 0x7e {
+            i += 1;
+            continue;
+        }
         let frame_start = i + 1;
         i += 1;
-        while i < buf.len() && buf[i] != 0x7e { i += 1; }
-        if i >= buf.len() { break; }
+        while i < buf.len() && buf[i] != 0x7e {
+            i += 1;
+        }
+        if i >= buf.len() {
+            break;
+        }
         let between = &buf[frame_start..i];
         i += 1;
-        if between.len() < 3 { continue; }
+        if between.len() < 3 {
+            continue;
+        }
         let clear = gdl90_unstuff(between);
-        if clear.len() < 3 { continue; }
+        if clear.len() < 3 {
+            continue;
+        }
         let payload = &clear[..clear.len() - 2];
         let fcs_lo = clear[clear.len() - 2];
         let fcs_hi = clear[clear.len() - 1];
-        if gdl90_crc16(payload) != ((fcs_hi as u16) << 8 | fcs_lo as u16) { continue; }
-        if payload.is_empty() { continue; }
+        if gdl90_crc16(payload) != ((fcs_hi as u16) << 8 | fcs_lo as u16) {
+            continue;
+        }
+        if payload.is_empty() {
+            continue;
+        }
         if (payload[0] & 0x7f) == 10 && payload.len() >= 28 {
             if let Some(pos) = decode_ownship_body(&payload[1..]) {
                 return Some(pos);
@@ -162,7 +218,8 @@ fn start_gdl90_listener(app: AppHandle, port: u16) -> Result<(), String> {
     }
     let socket = UdpSocket::bind(format!("0.0.0.0:{port}"))
         .map_err(|e| format!("Cannot bind UDP port {port}: {e}"))?;
-    socket.set_read_timeout(Some(Duration::from_millis(500)))
+    socket
+        .set_read_timeout(Some(Duration::from_millis(500)))
         .map_err(|e| format!("set_read_timeout: {e}"))?;
     state.stop.store(false, Ordering::SeqCst);
     state.port.store(port, Ordering::SeqCst);
@@ -170,15 +227,18 @@ fn start_gdl90_listener(app: AppHandle, port: u16) -> Result<(), String> {
     thread::spawn(move || {
         let mut buf = [0u8; 4096];
         loop {
-            if stop_flag.stop.load(Ordering::SeqCst) { break; }
+            if stop_flag.stop.load(Ordering::SeqCst) {
+                break;
+            }
             match socket.recv(&mut buf) {
                 Ok(n) => {
                     if let Some(pos) = parse_gdl90_datagram(&buf[..n]) {
                         let _ = app.emit("gdl90-position", &pos);
                     }
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock
-                    || e.kind() == std::io::ErrorKind::TimedOut => {}
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut => {}
                 Err(_) => break,
             }
         }
@@ -200,9 +260,16 @@ struct AppConfig {
     csv_directory: String,
     #[serde(default = "default_gdl90_port")]
     gdl90_port: u16,
+    #[serde(default = "default_preload_georeferences")]
+    preload_georeferences: bool,
 }
 
-fn default_gdl90_port() -> u16 { 4000 }
+fn default_gdl90_port() -> u16 {
+    4000
+}
+fn default_preload_georeferences() -> bool {
+    true
+}
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -210,6 +277,7 @@ impl Default for AppConfig {
             charts_directory: "charts".to_string(),
             csv_directory: "csv".to_string(),
             gdl90_port: default_gdl90_port(),
+            preload_georeferences: default_preload_georeferences(),
         }
     }
 }
@@ -261,6 +329,23 @@ struct GeorefPageResult {
 struct GeorefResult {
     chart_id: String,
     pages: Vec<GeorefPageResult>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GeorefPreloadRequest {
+    #[allow(dead_code)]
+    chart_id: String,
+    file_path: String,
+    #[serde(default)]
+    waypoint_file_paths: Vec<String>,
+    page_number: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GeorefCacheStatus {
+    ready: bool,
 }
 
 fn response(status: u16, content_type: &str, body: Vec<u8>) -> Response<Vec<u8>> {
@@ -335,6 +420,7 @@ fn read_config(app: &AppHandle) -> AppConfig {
             saved.csv_directory
         },
         gdl90_port: saved.gdl90_port,
+        preload_georeferences: saved.preload_georeferences,
     }
 }
 
@@ -723,7 +809,7 @@ fn join_output(handle: thread::JoinHandle<Vec<u8>>) -> Vec<u8> {
     handle.join().unwrap_or_default()
 }
 
-fn run_georef_command_with_limits(cmd: &mut Command) -> Result<Output, String> {
+fn run_georef_command_with_limits(cmd: &mut Command, timeout: Duration) -> Result<Output, String> {
     let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -740,7 +826,7 @@ fn run_georef_command_with_limits(cmd: &mut Command) -> Result<Output, String> {
         .ok_or_else(|| "Failed to capture georef stderr".to_string())?;
     let stdout_thread = thread::spawn(move || read_limited_output(stdout, MAX_GEOREF_OUTPUT_BYTES));
     let stderr_thread = thread::spawn(move || read_limited_output(stderr, MAX_GEOREF_OUTPUT_BYTES));
-    let deadline = Instant::now() + GEOREF_TIMEOUT;
+    let deadline = Instant::now() + timeout;
 
     loop {
         match child.try_wait() {
@@ -758,7 +844,7 @@ fn run_georef_command_with_limits(cmd: &mut Command) -> Result<Output, String> {
                 let stderr = String::from_utf8_lossy(&join_output(stderr_thread)).to_string();
                 return Err(format!(
                     "Georef runtime timed out after {} seconds{}",
-                    GEOREF_TIMEOUT.as_secs(),
+                    timeout.as_secs(),
                     if stderr.is_empty() {
                         String::new()
                     } else {
@@ -1042,6 +1128,173 @@ fn locate_georef_sidecar() -> Option<PathBuf> {
     }
 }
 
+fn file_fingerprint(path: &Path) -> String {
+    let Ok(metadata) = fs::metadata(path) else {
+        return format!("missing:{}", path.display());
+    };
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| format!("{}:{}", duration.as_secs(), duration.subsec_nanos()))
+        .unwrap_or_else(|| "unknown".to_string());
+    format!("{}:{}:{modified}", path.display(), metadata.len())
+}
+
+fn georef_cache_root(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join(GEOREF_CACHE_DIR);
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    Ok(dir)
+}
+
+fn georef_cache_key(
+    pdf_path: &Path,
+    csv_dir: &Path,
+    waypoint_paths: &[PathBuf],
+    page_number: Option<u32>,
+) -> String {
+    let mut hasher = DefaultHasher::new();
+    GEOREF_CACHE_VERSION.hash(&mut hasher);
+    file_fingerprint(pdf_path).hash(&mut hasher);
+    csv_dir.display().to_string().hash(&mut hasher);
+    for filename in &["DESIGNATED_POINT.csv", "VOR.csv"] {
+        file_fingerprint(&csv_dir.join(filename)).hash(&mut hasher);
+    }
+    for waypoint_path in waypoint_paths {
+        file_fingerprint(waypoint_path).hash(&mut hasher);
+    }
+    page_number.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn georef_cache_path(
+    app: &AppHandle,
+    pdf_path: &Path,
+    csv_dir: &Path,
+    waypoint_paths: &[PathBuf],
+    page_number: Option<u32>,
+) -> Result<PathBuf, String> {
+    Ok(georef_cache_root(app)?.join(format!(
+        "{}.json",
+        georef_cache_key(pdf_path, csv_dir, waypoint_paths, page_number)
+    )))
+}
+
+fn read_cached_georef(cache_path: &Path) -> Option<Vec<GeorefPageResult>> {
+    let content = fs::read_to_string(cache_path).ok()?;
+    serde_json::from_str::<Vec<GeorefPageResult>>(&content).ok()
+}
+
+fn write_cached_georef(cache_path: &Path, pages: &[GeorefPageResult]) {
+    if let Ok(content) = serde_json::to_string(pages) {
+        let _ = fs::write(cache_path, content);
+    }
+}
+
+fn georef_json_number(value: &serde_json::Value, keys: &[&str]) -> Option<f64> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(|v| v.as_f64()))
+        .filter(|value| value.is_finite())
+}
+
+fn page_has_display_gcp_overlay(page: &GeorefPageResult) -> bool {
+    let Some(points) = page.control_points.as_ref().and_then(|value| value.as_array()) else {
+        return false;
+    };
+
+    let used_points: Vec<&serde_json::Value> = points
+        .iter()
+        .filter(|point| point.get("used").and_then(|value| value.as_bool()).unwrap_or(false))
+        .collect();
+    let source_points: Vec<&serde_json::Value> = if used_points.len() >= 2 {
+        used_points
+    } else {
+        points.iter().collect()
+    };
+
+    let mut unique_points: Vec<(f64, f64, f64, f64)> = Vec::new();
+    for point in source_points {
+        let Some(pdf_x) = georef_json_number(point, &["mupdfX", "mupdf_x"]) else {
+            continue;
+        };
+        let Some(pdf_y) = georef_json_number(point, &["mupdfY", "mupdf_y"]) else {
+            continue;
+        };
+        let Some(lon) = georef_json_number(point, &["lon", "longitude"]) else {
+            continue;
+        };
+        let Some(lat) = georef_json_number(point, &["lat", "latitude"]) else {
+            continue;
+        };
+
+        let already_seen = unique_points.iter().any(|(_, _, seen_lon, seen_lat)| {
+            (seen_lon - lon).abs() < 1e-6 && (seen_lat - lat).abs() < 1e-6
+        });
+        if !already_seen {
+            unique_points.push((pdf_x, pdf_y, lon, lat));
+        }
+    }
+
+    if unique_points.len() < 2 {
+        return false;
+    }
+
+    let mut max_pdf_span = 0.0_f64;
+    let mut max_world_span = 0.0_f64;
+    for index in 0..unique_points.len() {
+        let (pdf_x, pdf_y, lon, lat) = unique_points[index];
+        for next_index in (index + 1)..unique_points.len() {
+            let (next_pdf_x, next_pdf_y, next_lon, next_lat) = unique_points[next_index];
+            max_pdf_span = max_pdf_span.max((pdf_x - next_pdf_x).hypot(pdf_y - next_pdf_y));
+            max_world_span = max_world_span.max((lon - next_lon).hypot(lat - next_lat));
+        }
+    }
+
+    max_pdf_span > 1.0 && max_world_span > 1e-6
+}
+
+fn resolve_waypoint_paths(
+    charts_dir: &Path,
+    waypoint_file_paths: Option<Vec<String>>,
+    waypoint_file_path: Option<String>,
+) -> Vec<PathBuf> {
+    let mut waypoint_files = waypoint_file_paths.unwrap_or_default();
+    if let Some(wp_file) = waypoint_file_path {
+        waypoint_files.push(wp_file);
+    }
+    waypoint_files.sort();
+    waypoint_files.dedup();
+
+    let mut waypoint_paths: Vec<PathBuf> = waypoint_files
+        .into_iter()
+        .filter_map(|wp_file| find_pdf_path(charts_dir, &wp_file))
+        .collect();
+    waypoint_paths.sort();
+    waypoint_paths.dedup();
+    waypoint_paths
+}
+
+fn build_georef_command(app: &AppHandle) -> Result<Command, String> {
+    if let Some(sidecar_path) = locate_georef_sidecar() {
+        Ok(Command::new(sidecar_path))
+    } else if !cfg!(debug_assertions) {
+        Err("georef sidecar not found in bundled application".to_string())
+    } else {
+        let script_path = locate_georef_script(app).ok_or_else(|| {
+            "georef runtime not found - bundle the sidecar or set GEOREF_SCRIPT_PATH in development"
+                .to_string()
+        })?;
+        let python = std::env::var("GEOREF_PYTHON").unwrap_or_else(|_| "python3".to_string());
+        let mut cmd = Command::new(python);
+        cmd.arg(script_path);
+        Ok(cmd)
+    }
+}
+
 fn georeference_chart_blocking(
     app: AppHandle,
     chart_id: String,
@@ -1056,39 +1309,22 @@ fn georeference_chart_blocking(
 
     let pdf_path = find_pdf_path(&charts_dir, &file_path)
         .ok_or_else(|| format!("PDF not found: {file_path}"))?;
+    let waypoint_paths =
+        resolve_waypoint_paths(&charts_dir, waypoint_file_paths, waypoint_file_path);
+    let cache_path = georef_cache_path(&app, &pdf_path, &csv_dir, &waypoint_paths, page_number)?;
+    if let Some(pages) = read_cached_georef(&cache_path) {
+        return Ok(GeorefResult { chart_id, pages });
+    }
 
-    let mut cmd = if let Some(sidecar_path) = locate_georef_sidecar() {
-        Command::new(sidecar_path)
-    } else if !cfg!(debug_assertions) {
-        return Err("georef sidecar not found in bundled application".to_string());
-    } else {
-        let script_path = locate_georef_script(&app).ok_or_else(|| {
-            "georef runtime not found - bundle the sidecar or set GEOREF_SCRIPT_PATH in development"
-                .to_string()
-        })?;
-        let python = std::env::var("GEOREF_PYTHON").unwrap_or_else(|_| "python3".to_string());
-        let mut cmd = Command::new(python);
-        cmd.arg(script_path);
-        cmd
-    };
+    let mut cmd = build_georef_command(&app)?;
 
     cmd.arg("--pdf")
         .arg(&pdf_path)
         .arg("--csv-dir")
         .arg(&csv_dir);
 
-    // Resolve and pass all 航路点坐标 waypoint PDFs if provided.
-    // Some airports split the coordinate table across multiple pages/files.
-    let mut waypoint_files = waypoint_file_paths.unwrap_or_default();
-    if let Some(wp_file) = waypoint_file_path {
-        waypoint_files.push(wp_file);
-    }
-    waypoint_files.sort();
-    waypoint_files.dedup();
-    for wp_file in waypoint_files {
-        if let Some(wp_path) = find_pdf_path(&charts_dir, &wp_file) {
-            cmd.arg("--waypoint-pdf").arg(&wp_path);
-        }
+    for waypoint_path in &waypoint_paths {
+        cmd.arg("--waypoint-pdf").arg(waypoint_path);
     }
 
     if let Some(page_number) = page_number {
@@ -1097,7 +1333,7 @@ fn georeference_chart_blocking(
 
     cmd.env("PYTHONDONTWRITEBYTECODE", "1");
 
-    let output = run_georef_command_with_limits(&mut cmd)?;
+    let output = run_georef_command_with_limits(&mut cmd, GEOREF_TIMEOUT)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1107,8 +1343,226 @@ fn georeference_chart_blocking(
     let stdout = String::from_utf8_lossy(&output.stdout);
     let pages: Vec<GeorefPageResult> =
         serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse georef output: {e}"))?;
+    write_cached_georef(&cache_path, &pages);
 
     Ok(GeorefResult { chart_id, pages })
+}
+
+#[derive(Debug, Deserialize)]
+struct GeorefBatchJobResult {
+    id: usize,
+    ok: bool,
+    #[serde(default)]
+    pages: Option<Vec<GeorefPageResult>>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GeorefBatchOutput {
+    results: Vec<GeorefBatchJobResult>,
+}
+
+/// A single resolved preload job: a PDF whose georeference is not yet cached.
+struct PreloadJob {
+    pdf_path: PathBuf,
+    waypoint_paths: Vec<PathBuf>,
+    page_number: Option<u32>,
+    cache_path: PathBuf,
+}
+
+static GEOREF_BATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Run one batch of preload jobs in a single sidecar invocation, then write a
+/// per-chart cache file for each job that succeeded. One process startup pays
+/// for the whole slice instead of one startup per chart.
+fn run_georef_batch(app: &AppHandle, csv_dir: &Path, jobs: &[PreloadJob]) {
+    if jobs.is_empty() {
+        return;
+    }
+
+    let manifest_jobs: Vec<serde_json::Value> = jobs
+        .iter()
+        .enumerate()
+        .map(|(index, job)| {
+            let waypoints: Vec<String> = job
+                .waypoint_paths
+                .iter()
+                .map(|path| path.to_string_lossy().to_string())
+                .collect();
+            serde_json::json!({
+                "id": index,
+                "pdf": job.pdf_path.to_string_lossy(),
+                "waypoint_pdfs": waypoints,
+                "page": job.page_number,
+            })
+        })
+        .collect();
+
+    let manifest = serde_json::json!({
+        "csv_dir": csv_dir.to_string_lossy(),
+        "jobs": manifest_jobs,
+    });
+    let Ok(manifest_text) = serde_json::to_string(&manifest) else {
+        return;
+    };
+
+    let unique = GEOREF_BATCH_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let manifest_path = std::env::temp_dir().join(format!(
+        "georef-batch-{}-{unique}.json",
+        std::process::id()
+    ));
+    if fs::write(&manifest_path, manifest_text).is_err() {
+        return;
+    }
+
+    let result = (|| -> Result<GeorefBatchOutput, String> {
+        let mut cmd = build_georef_command(app)?;
+        cmd.arg("--batch").arg(&manifest_path);
+        cmd.env("PYTHONDONTWRITEBYTECODE", "1");
+        // Process startup is paid once; allow generous per-job headroom.
+        let timeout = Duration::from_secs(30 + 20 * jobs.len() as u64);
+        let output = run_georef_command_with_limits(&mut cmd, timeout)?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).to_string());
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        serde_json::from_str::<GeorefBatchOutput>(&stdout).map_err(|error| error.to_string())
+    })();
+
+    let _ = fs::remove_file(&manifest_path);
+
+    if let Ok(output) = result {
+        for job_result in output.results {
+            if !job_result.ok {
+                continue;
+            }
+            if let (Some(pages), Some(job)) = (job_result.pages, jobs.get(job_result.id)) {
+                write_cached_georef(&job.cache_path, &pages);
+            }
+        }
+    }
+}
+
+/// Resolve preload requests to uncached jobs and process them across worker
+/// threads, each running its slice as a single batched sidecar invocation.
+fn run_georef_preload(app: AppHandle, requests: Vec<GeorefPreloadRequest>) {
+    let config = read_config(&app);
+    let charts_dir = resolve_config_path(&config.charts_directory);
+    let csv_dir = resolve_config_path(&config.csv_directory);
+
+    let mut jobs: Vec<PreloadJob> = Vec::new();
+    for request in requests {
+        let Some(pdf_path) = find_pdf_path(&charts_dir, &request.file_path) else {
+            continue;
+        };
+        let waypoint_paths =
+            resolve_waypoint_paths(&charts_dir, Some(request.waypoint_file_paths), None);
+        let Ok(cache_path) =
+            georef_cache_path(&app, &pdf_path, &csv_dir, &waypoint_paths, request.page_number)
+        else {
+            continue;
+        };
+        if read_cached_georef(&cache_path).is_some() {
+            continue;
+        }
+        jobs.push(PreloadJob {
+            pdf_path,
+            waypoint_paths,
+            page_number: request.page_number,
+            cache_path,
+        });
+    }
+
+    if jobs.is_empty() {
+        return;
+    }
+
+    let cores = thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let workers = cores.min(jobs.len()).max(1);
+
+    // Contiguous chunks keep each worker's batch evenly sized.
+    let chunk_size = jobs.len().div_ceil(workers);
+    let csv_dir = Arc::new(csv_dir);
+    let mut handles = Vec::new();
+    let mut chunks: Vec<Vec<PreloadJob>> = Vec::new();
+    let mut current: Vec<PreloadJob> = Vec::with_capacity(chunk_size);
+    for job in jobs {
+        current.push(job);
+        if current.len() == chunk_size {
+            chunks.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+
+    for chunk in chunks {
+        let app = app.clone();
+        let csv_dir = Arc::clone(&csv_dir);
+        handles.push(thread::spawn(move || {
+            run_georef_batch(&app, &csv_dir, &chunk);
+        }));
+    }
+
+    for handle in handles {
+        let _ = handle.join();
+    }
+}
+
+#[tauri::command]
+fn get_georeference_cache_status(
+    app: AppHandle,
+    file_path: String,
+    waypoint_file_paths: Option<Vec<String>>,
+    waypoint_file_path: Option<String>,
+    page_number: Option<u32>,
+) -> GeorefCacheStatus {
+    let config = read_config(&app);
+    let charts_dir = resolve_config_path(&config.charts_directory);
+    let csv_dir = resolve_config_path(&config.csv_directory);
+    let Some(pdf_path) = find_pdf_path(&charts_dir, &file_path) else {
+        return GeorefCacheStatus { ready: false };
+    };
+    let waypoint_paths =
+        resolve_waypoint_paths(&charts_dir, waypoint_file_paths, waypoint_file_path);
+    let Ok(cache_path) = georef_cache_path(&app, &pdf_path, &csv_dir, &waypoint_paths, page_number)
+    else {
+        return GeorefCacheStatus { ready: false };
+    };
+    let ready = read_cached_georef(&cache_path)
+        .map(|pages| {
+            pages.iter().any(|page| {
+                page_has_display_gcp_overlay(page)
+                    && page_number
+                        .map(|wanted| wanted == page.page)
+                        .unwrap_or(true)
+            })
+        })
+        .unwrap_or(false);
+    GeorefCacheStatus { ready }
+}
+
+#[tauri::command]
+fn preload_georeference_charts(
+    app: AppHandle,
+    requests: Vec<GeorefPreloadRequest>,
+) -> Result<(), String> {
+    let state = app.state::<Arc<GeorefPreloadState>>();
+    if state.running.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+
+    let preload_state = Arc::clone(&*state);
+    thread::spawn(move || {
+        run_georef_preload(app, requests);
+        preload_state.running.store(false, Ordering::SeqCst);
+    });
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -1138,6 +1592,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(PdfPathCache::default())
         .manage(Arc::new(Gdl90State::default()))
+        .manage(Arc::new(GeorefPreloadState::default()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
@@ -1150,6 +1605,8 @@ pub fn run() {
             save_config,
             read_chart_sources,
             read_airport_coords,
+            get_georeference_cache_status,
+            preload_georeference_charts,
             georeference_chart,
             start_gdl90_listener,
             stop_gdl90_listener

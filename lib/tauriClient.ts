@@ -128,6 +128,35 @@ export async function georeferenceChart(
   });
 }
 
+export interface GeorefPreloadRequest {
+  chartId: string;
+  filePath: string;
+  waypointFilePaths?: string[];
+  pageNumber?: number;
+}
+
+export interface GeorefCacheStatus {
+  ready: boolean;
+}
+
+export async function getGeoreferenceCacheStatus(
+  filePath: string,
+  waypointFilePaths: string[] = [],
+  pageNumber?: number
+): Promise<GeorefCacheStatus> {
+  return invoke<GeorefCacheStatus>("get_georeference_cache_status", {
+    filePath,
+    waypointFilePaths,
+    pageNumber: pageNumber ?? null,
+  });
+}
+
+export async function preloadGeoreferenceCharts(
+  requests: GeorefPreloadRequest[]
+): Promise<void> {
+  return invoke("preload_georeference_charts", { requests });
+}
+
 export interface AirportCoord {
   icao: string;
   lat: number;

@@ -1,16 +1,29 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const sourcePath = join(repoRoot, "src-tauri", "resources", "georef_script.py");
+const matcherPath = join(
+  repoRoot,
+  "src-tauri",
+  "resources",
+  "pdf_symbol_matcher"
+);
+const symbolLibraryPath = join(
+  repoRoot,
+  "src-tauri",
+  "resources",
+  "symbol_library"
+);
 const binariesDir = join(repoRoot, "src-tauri", "binaries");
 const requirementsPath = join(scriptDir, "georef-sidecar-requirements.txt");
 const workRoot = join(binariesDir, ".pyinstaller");
+const pyinstallerDataSeparator = process.platform === "win32" ? ";" : ":";
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -98,6 +111,25 @@ function isWindowsTarget(targetTriple) {
   return targetTriple.includes("windows");
 }
 
+function newestMtimeMs(inputPath) {
+  if (!existsSync(inputPath)) {
+    return 0;
+  }
+  const stats = statSync(inputPath);
+  if (!stats.isDirectory()) {
+    return stats.mtimeMs;
+  }
+  let newest = stats.mtimeMs;
+  for (const entry of readdirSync(inputPath, { withFileTypes: true })) {
+    // The PyInstaller work tree and Python caches are build artefacts, not source.
+    if (entry.name === "__pycache__" || entry.name === ".pyinstaller") {
+      continue;
+    }
+    newest = Math.max(newest, newestMtimeMs(join(inputPath, entry.name)));
+  }
+  return newest;
+}
+
 function isOutputFresh(outputPath) {
   if (!existsSync(outputPath)) {
     return false;
@@ -108,8 +140,10 @@ function isOutputFresh(outputPath) {
     sourcePath,
     fileURLToPath(import.meta.url),
     requirementsPath,
+    matcherPath,
+    symbolLibraryPath,
   ]) {
-    if (existsSync(inputPath) && statSync(inputPath).mtimeMs > outputTime) {
+    if (newestMtimeMs(inputPath) > outputTime) {
       return false;
     }
   }
@@ -135,6 +169,7 @@ function main() {
 
   const python = findPython();
   requirePythonModule(python, "fitz", "PyMuPDF");
+  requirePythonModule(python, "numpy");
   requirePythonModule(python, "pyproj");
   requirePythonModule(python, "PyInstaller");
 
@@ -155,7 +190,13 @@ function main() {
     "--collect-all",
     "fitz",
     "--collect-all",
+    "numpy",
+    "--collect-all",
     "pyproj",
+    "--add-data",
+    `${matcherPath}${pyinstallerDataSeparator}pdf_symbol_matcher`,
+    "--add-data",
+    `${symbolLibraryPath}${pyinstallerDataSeparator}symbol_library`,
   ];
 
   if (hasPythonModule(python, "pymupdf")) {
