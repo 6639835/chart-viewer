@@ -1,5 +1,5 @@
 name: Feature Request
-description: Suggest a new feature or enhancement
+description: Suggest a new feature or improvement
 title: "[FEATURE] "
 labels: ["enhancement"]
 assignees: []
@@ -8,14 +8,14 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for suggesting a new feature! Please provide as much detail as possible to help us understand your request.
+        Describe the workflow you want to improve and the outcome you need. Concrete aviation/chart-viewer scenarios are more useful than broad product requests.
 
   - type: textarea
     id: problem
     attributes:
-      label: Problem Description
-      description: What problem does this feature solve? What pain point does it address?
-      placeholder: Describe the problem or limitation you're experiencing...
+      label: Problem or Workflow
+      description: What task is hard, slow, confusing, or currently impossible?
+      placeholder: Describe the current limitation.
     validations:
       required: true
 
@@ -23,80 +23,69 @@ body:
     id: solution
     attributes:
       label: Proposed Solution
-      description: Describe the solution you'd like to see implemented
-      placeholder: Describe your proposed feature or enhancement...
-    validations:
-      required: true
-
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: Alternative Solutions
-      description: Describe any alternative solutions or workarounds you've considered
-      placeholder: What other approaches have you considered?
-
-  - type: dropdown
-    id: priority
-    attributes:
-      label: Priority
-      description: How important is this feature to you?
-      options:
-        - Low - Nice to have
-        - Medium - Would improve my workflow
-        - High - Important for my use case
-        - Critical - Blocking my usage
+      description: What would you like Chart Viewer to do?
+      placeholder: Describe the feature or behavior you want.
     validations:
       required: true
 
   - type: dropdown
     id: category
     attributes:
-      label: Feature Category
-      description: What category does this feature fall under?
+      label: Feature Area
+      multiple: true
       options:
-        - UI/UX - User interface or user experience improvements
-        - Performance - Speed, memory, or efficiency improvements
-        - Functionality - New features or capabilities
-        - Integration - Integration with other tools or services
-        - Accessibility - Accessibility improvements
-        - Developer Experience - Tools or features for developers
+        - Chart data / CSV support
+        - PDF viewer
+        - Chart list / bookmarks
+        - Globe / georeferencing
+        - GDL90 / ownship
+        - Settings / configuration
+        - Theme / language
+        - Updater / releases
+        - Build / developer tooling
+        - Accessibility
         - Other
     validations:
       required: true
 
-  - type: textarea
-    id: use-cases
+  - type: dropdown
+    id: priority
     attributes:
-      label: Use Cases
-      description: Describe specific use cases or scenarios where this feature would be helpful
-      placeholder: |
-        - Use case 1: ...
-        - Use case 2: ...
-        - Use case 3: ...
+      label: Priority
+      options:
+        - Low - Nice to have
+        - Medium - Improves regular use
+        - High - Important for my workflow
+        - Critical - Blocking usage
+    validations:
+      required: true
 
   - type: textarea
-    id: mockups
+    id: alternatives
     attributes:
-      label: Mockups or Examples
-      description: If you have mockups, screenshots, or examples from other applications, please share them
-      placeholder: Attach any relevant images or links...
+      label: Alternatives or Workarounds
+      description: What have you tried instead?
 
   - type: textarea
-    id: additional
+    id: examples
     attributes:
-      label: Additional Context
-      description: Add any other context, research, or information about the feature request
-      placeholder: Any additional information that might be helpful...
+      label: Examples, Mockups, or References
+      description: Add screenshots, diagrams, links, or examples from similar tools.
+
+  - type: textarea
+    id: data-impact
+    attributes:
+      label: Data or Compatibility Impact
+      description: Note whether this depends on a chart data format, file naming convention, OS, avionics source, or release/update behavior.
 
   - type: checkboxes
     id: checklist
     attributes:
       label: Checklist
-      description: Please confirm the following
       options:
-        - label: I have searched existing issues to avoid duplicates
+        - label: I searched existing issues for duplicates.
           required: true
-        - label: I have provided all the information requested above
+        - label: I described the user workflow this would improve.
           required: true
-        - label: I have considered the impact on existing users
+        - label: I considered compatibility with existing local chart data.
           required: true

@@ -11,10 +11,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   build:
     if: github.event_name != 'push' || (startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-'))
     strategy:
+      fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
         include:
@@ -26,13 +34,14 @@ jobs:
             artifact_name: windows
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "npm"
@@ -41,10 +50,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
+          cache-dependency-path: scripts/georef-sidecar-requirements.txt
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
@@ -62,8 +72,8 @@ jobs:
       - name: Install georeferencing sidecar dependencies
         run: python -m pip install -r scripts/georef-sidecar-requirements.txt
 
-      - name: Lint
-        run: npm run lint
+      - name: Test
+        run: npm run test
 
       - name: Build Tauri app
         run: npm run tauri:build -- --config '{"bundle":{"createUpdaterArtifacts":true}}'
@@ -73,7 +83,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: chart-viewer-${{ matrix.artifact_name }}-prerelease
           path: |
@@ -86,6 +96,7 @@ jobs:
             src-tauri/target/release/bundle/**/*setup.exe
             src-tauri/target/release/bundle/**/*.sig
             src-tauri/target/release/bundle/**/latest*.json
+          if-no-files-found: error
           retention-days: 14
 
   pre-release:
@@ -94,13 +105,14 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-')
     permissions:
       contents: write
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -111,7 +123,7 @@ jobs:
         run: node scripts/generate-tauri-updater-manifest.js artifacts artifacts/latest.json
 
       - name: Create Pre-release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             artifacts/latest.json

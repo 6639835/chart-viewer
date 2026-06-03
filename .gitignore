@@ -1,54 +1,68 @@
-# dependencies
-/node_modules
-/.pnp
+# Dependencies
+/node_modules/
+/.pnp/
 .pnp.js
 
-# testing
-/coverage
+# Package manager and runtime logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# next.js
+# Tests and coverage
+/coverage/
+/.nyc_output/
+
+# Next.js
 /.next/
 /out/
+next-env.d.ts
 
-# production
-/build
-/dist
+# Production/build outputs
+/build/
+/dist/
 
-# tauri
+# TypeScript
+*.tsbuildinfo
+
+# Tauri and Rust
 /src-tauri/target/
 /src-tauri/gen/
-/src-tauri/resources/__pycache__/
 
-# misc
-.DS_Store
+# Georeferencing sidecar and Python caches
+/src-tauri/binaries/*
+!/src-tauri/binaries/.gitignore
+/src-tauri/binaries/.pyinstaller/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
 *.pem
 tauri-updater.key
 tauri-updater.key.pub
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# local env files
-.env*.local
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# user configuration
+# Local app/user configuration
 config.json
 
-# user data directories
-/charts
-/csv
+# Local aviation data
+/charts/
+/csv/
 
-# generated icons (keep source SVG and main icons in git)
+# Generated icons (keep source SVG and bundle icons in git)
 public/icon-*.png
-# Don't ignore icon.ico and icon.icns (needed for builds)
 !public/icon.ico
 !public/icon.icns
+
+# Tooling and OS metadata
+.DS_Store
+.idea/
+.vscode/
+.vercel/
