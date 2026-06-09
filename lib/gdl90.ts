@@ -2,10 +2,10 @@
 // Spec: Garmin GDL 90 Data Interface Specification Rev A (§3.5.1).
 
 export interface OwnshipPosition {
-  lat: number;             // degrees, north positive
-  lon: number;             // degrees, east positive
-  altitudeFt: number | null;    // pressure altitude ft, null = invalid
-  trackDeg: number | null;      // true track 0-360°, null = not valid
+  lat: number; // degrees, north positive
+  lon: number; // degrees, east positive
+  altitudeFt: number | null; // pressure altitude ft, null = invalid
+  trackDeg: number | null; // true track 0-360°, null = not valid
   groundSpeedKt: number | null; // knots, null = not available
 }
 
@@ -14,7 +14,8 @@ const CRC16_TABLE = (() => {
   const t = new Uint16Array(256);
   for (let i = 0; i < 256; i++) {
     let c = i << 8;
-    for (let b = 0; b < 8; b++) c = (c & 0x8000) ? ((c << 1) ^ 0x1021) & 0xffff : (c << 1) & 0xffff;
+    for (let b = 0; b < 8; b++)
+      c = c & 0x8000 ? ((c << 1) ^ 0x1021) & 0xffff : (c << 1) & 0xffff;
     t[i] = c;
   }
   return t;
@@ -22,7 +23,10 @@ const CRC16_TABLE = (() => {
 
 function crc16(data: Uint8Array): number {
   let crc = 0;
-  for (let i = 0; i < data.length; i++) crc = (CRC16_TABLE[(crc >> 8) & 0xff]! ^ ((crc << 8) & 0xffff) ^ data[i]!) & 0xffff;
+  for (let i = 0; i < data.length; i++)
+    crc =
+      (CRC16_TABLE[(crc >> 8) & 0xff]! ^ ((crc << 8) & 0xffff) ^ data[i]!) &
+      0xffff;
   return crc;
 }
 
@@ -30,8 +34,10 @@ function crc16(data: Uint8Array): number {
 function unstuff(raw: Uint8Array): Uint8Array {
   const out: number[] = [];
   for (let i = 0; i < raw.length; i++) {
-    if (raw[i] === 0x7d) { i++; if (i < raw.length) out.push(raw[i]! ^ 0x20); }
-    else out.push(raw[i]!);
+    if (raw[i] === 0x7d) {
+      i++;
+      if (i < raw.length) out.push(raw[i]! ^ 0x20);
+    } else out.push(raw[i]!);
   }
   return new Uint8Array(out);
 }
@@ -100,7 +106,10 @@ const MSG_OWNSHIP = 10;
 export function parseGdl90Datagram(buf: Uint8Array): OwnshipPosition | null {
   let i = 0;
   while (i < buf.length) {
-    if (buf[i] !== 0x7e) { i++; continue; }
+    if (buf[i] !== 0x7e) {
+      i++;
+      continue;
+    }
     const frameStart = i + 1;
     i++;
     while (i < buf.length && buf[i] !== 0x7e) i++;

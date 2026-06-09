@@ -180,13 +180,19 @@ function validDisplayControls(page: GeorefPageResult): DisplayControlPoint[] {
   return [...unique.values()];
 }
 
-export function hasDisplayGcpOverlay(page: GeorefPageResult | null | undefined) {
+export function hasDisplayGcpOverlay(
+  page: GeorefPageResult | null | undefined
+) {
   if (!page) return false;
   const controls = validDisplayControls(page);
   if (controls.length < 2) return false;
 
   const pdfSpan = controls.reduce((maxSpan, point, index) => {
-    for (let nextIndex = index + 1; nextIndex < controls.length; nextIndex += 1) {
+    for (
+      let nextIndex = index + 1;
+      nextIndex < controls.length;
+      nextIndex += 1
+    ) {
       const next = controls[nextIndex];
       maxSpan = Math.max(
         maxSpan,
@@ -198,7 +204,11 @@ export function hasDisplayGcpOverlay(page: GeorefPageResult | null | undefined) 
 
   const worldSpan = controls.reduce((maxSpan, point, index) => {
     const [x, y] = lonLatToMercator(point.lon, point.lat);
-    for (let nextIndex = index + 1; nextIndex < controls.length; nextIndex += 1) {
+    for (
+      let nextIndex = index + 1;
+      nextIndex < controls.length;
+      nextIndex += 1
+    ) {
       const next = controls[nextIndex];
       const [nx, ny] = lonLatToMercator(next.lon, next.lat);
       maxSpan = Math.max(maxSpan, Math.hypot(x - nx, y - ny));
@@ -223,7 +233,9 @@ function fitDisplaySimilarityTransform(page: GeorefPageResult) {
   pdfMean.x /= controls.length;
   pdfMean.y /= controls.length;
 
-  const worldPoints = controls.map((point) => lonLatToMercator(point.lon, point.lat));
+  const worldPoints = controls.map((point) =>
+    lonLatToMercator(point.lon, point.lat)
+  );
   const worldMean = worldPoints.reduce(
     (sum, [x, y]) => ({ x: sum.x + x, y: sum.y + y }),
     { x: 0, y: 0 }

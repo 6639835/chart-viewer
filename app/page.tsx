@@ -662,11 +662,7 @@ export default function Home() {
       if (b.chartId === selectedChart.ChartId) return 1;
       return 0;
     });
-  }, [
-    getWaypointFilePathsForAirport,
-    groupedCharts,
-    selectedChart,
-  ]);
+  }, [getWaypointFilePathsForAirport, groupedCharts, selectedChart]);
 
   const clearGeorefOverlay = useCallback(() => {
     setGeorefOverlay(null);

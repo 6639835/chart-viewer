@@ -106,7 +106,12 @@ export default function ChartList({
       (count, runway) => count + (groupedCharts.get(runway)?.length ?? 0),
       0
     );
-  }, [filteredRunways, groupedCharts, shouldGroupByRunway, sortedCharts.length]);
+  }, [
+    filteredRunways,
+    groupedCharts,
+    shouldGroupByRunway,
+    sortedCharts.length,
+  ]);
 
   if (sortedCharts.length === 0) {
     return (
