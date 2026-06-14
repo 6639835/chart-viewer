@@ -462,246 +462,249 @@ def match_pdf(
     if templates is None:
         templates = load_templates(library_dir, template_ids=template_ids)
     doc = fitz.open(pdf_path)
-    all_matches: list[dict] = []
-    all_rejected: list[dict] = []
-    page_reports = []
-    labels_by_page: dict[int, list[dict]] = {}
+    try:
+        all_matches: list[dict] = []
+        all_rejected: list[dict] = []
+        page_reports = []
+        labels_by_page: dict[int, list[dict]] = {}
 
-    # When a specific page is requested, only that page is matched. The caller
-    # discards other pages anyway, so matching them is wasted work for
-    # multi-page PDFs.
-    if page_number is not None:
-        page_indexes = [page_number - 1] if 1 <= page_number <= len(doc) else []
-    else:
-        page_indexes = list(range(len(doc)))
+        # When a specific page is requested, only that page is matched. The caller
+        # discards other pages anyway, so matching them is wasted work for
+        # multi-page PDFs.
+        if page_number is not None:
+            page_indexes = [page_number - 1] if 1 <= page_number <= len(doc) else []
+        else:
+            page_indexes = list(range(len(doc)))
 
-    for page_index in page_indexes:
-        page = doc[page_index]
-        page_no = page_index + 1
-        page_reports.append({"page": page_no, **page_coordinate_report(page)})
-        drawings = extract_drawings(page, extended=True)
-        if debug:
-            dump_drawings_json(drawings, debug_dir / f"{pdf_path.stem}_page_{page_no:03d}_vectors.json")
+        for page_index in page_indexes:
+            page = doc[page_index]
+            page_no = page_index + 1
+            page_reports.append({"page": page_no, **page_coordinate_report(page)})
+            drawings = extract_drawings(page, extended=True)
+            if debug:
+                dump_drawings_json(drawings, debug_dir / f"{pdf_path.stem}_page_{page_no:03d}_vectors.json")
 
-        labels = extract_label_candidates(page)
-        labels_by_page[page_no] = labels
-        word_boxes = all_text_word_boxes(page, pad=1.0)
-        candidates = candidate_drawings(drawings, page)
-        candidate_box_records = []
+            labels = extract_label_candidates(page)
+            labels_by_page[page_no] = labels
+            word_boxes = all_text_word_boxes(page, pad=1.0)
+            candidates = candidate_drawings(drawings, page)
+            candidate_box_records = []
 
-        for ci, c in enumerate(candidates):
-            d = c["drawing"]
-            r = fitz.Rect(c["bbox_mupdf"])
-            center = ((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0)
-            if point_inside_any_box(center, word_boxes):
-                all_rejected.append({
+            for ci, c in enumerate(candidates):
+                d = c["drawing"]
+                r = fitz.Rect(c["bbox_mupdf"])
+                center = ((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0)
+                if point_inside_any_box(center, word_boxes):
+                    all_rejected.append({
+                        "page": page_no,
+                        "candidate_index": ci,
+                        "bbox_mupdf": _rect_tuple(r),
+                        "center_mupdf": [float(center[0]), float(center[1])],
+                        "candidate_path_id": int(d.get("path_id", -1)),
+                        "candidate_item_count": len(d.get("items", []) or []),
+                        "reject_reasons": ["candidate_center_inside_text_word_bbox"],
+                    })
+                    continue
+                nearest, nearest_dist, label_score = nearest_label_for_symbol(r, labels)
+                # For aviation waypoint matching, a symbol should be close to a waypoint/procedure
+                # label. This prevents thousands of text glyphs, terrain symbols, and chart grid
+                # elements from being sent through the heavier vector scorer.
+                if label_score <= 0.0:
+                    all_rejected.append({
+                        "page": page_no,
+                        "candidate_index": ci,
+                        "bbox_mupdf": _rect_tuple(r),
+                        "center_mupdf": [float(center[0]), float(center[1])],
+                        "candidate_path_id": int(d.get("path_id", -1)),
+                        "candidate_item_count": len(d.get("items", []) or []),
+                        "reject_reasons": ["not_near_waypoint_label"],
+                        "nearest_label": nearest,
+                        "nearest_label_distance_mupdf": float(nearest_dist),
+                        "nearest_label_score": float(label_score),
+                    })
+                    continue
+                pts = points_for_drawings([d], spacing=0.20, curve_steps=32)
+                if pts.shape[0] < 5:
+                    continue
+                desc = descriptor_for_drawings([d], pts)
+                best_t = None
+                best_score = None
+                for t in templates:
+                    s = score_candidate_against_template(pts, desc, t, label_score)
+                    if best_score is None or s["confidence"] > best_score["confidence"]:
+                        best_score = s
+                        best_t = t
+                if not best_t or not best_score:
+                    continue
+                family = best_t.get("symbol_family")
+                output_id = best_t.get("output_template_id") or best_t.get("template_id")
+                raw_reasons = []
+                tb_for_scale = best_t.get("descriptor", {})
+                tbw_for_scale = float(tb_for_scale.get("bbox_width") or max(r.width, r.height, 1.0))
+                cand_scale_for_reject = max(float(r.width), float(r.height)) / max(tbw_for_scale, 1e-9)
+                if cand_scale_for_reject < 0.35:
+                    raw_reasons.append("scale_too_small_for_source_template")
+                if cand_scale_for_reject > 2.75:
+                    raw_reasons.append("scale_too_large_for_source_template")
+                if best_score["confidence"] < threshold:
+                    raw_reasons.append("below_threshold")
+                if best_score["chamfer"] > 0.085 and best_score["confidence"] < threshold + 0.06:
+                    raw_reasons.append("shape_chamfer_too_high")
+                if family in GENERIC_FAMILIES and label_score <= 0.0:
+                    raw_reasons.append("generic_symbol_without_waypoint_label_context")
+                # The open diamond/circle waypoint is very distinctive in these PDFs; nearby labels are still
+                # preferred but not required when the vector shape is excellent.
+                if output_id == "open_diamond_circle_waypoint" and best_score["chamfer"] < 0.035:
+                    raw_reasons = [x for x in raw_reasons if x != "generic_symbol_without_waypoint_label_context"]
+                rec_common = {
                     "page": page_no,
                     "candidate_index": ci,
                     "bbox_mupdf": _rect_tuple(r),
                     "center_mupdf": [float(center[0]), float(center[1])],
                     "candidate_path_id": int(d.get("path_id", -1)),
                     "candidate_item_count": len(d.get("items", []) or []),
-                    "reject_reasons": ["candidate_center_inside_text_word_bbox"],
-                })
-                continue
-            nearest, nearest_dist, label_score = nearest_label_for_symbol(r, labels)
-            # For aviation waypoint matching, a symbol should be close to a waypoint/procedure
-            # label. This prevents thousands of text glyphs, terrain symbols, and chart grid
-            # elements from being sent through the heavier vector scorer.
-            if label_score <= 0.0:
-                all_rejected.append({
-                    "page": page_no,
-                    "candidate_index": ci,
-                    "bbox_mupdf": _rect_tuple(r),
-                    "center_mupdf": [float(center[0]), float(center[1])],
-                    "candidate_path_id": int(d.get("path_id", -1)),
-                    "candidate_item_count": len(d.get("items", []) or []),
-                    "reject_reasons": ["not_near_waypoint_label"],
+                    "template_id": output_id,
+                    "source_template_id": best_t.get("template_id"),
+                    "source_symbol_family": family,
+                    "confidence": float(best_score["confidence"]),
+                    "score": {k: float(v) if isinstance(v, (float, int)) else v for k, v in best_score.items()},
                     "nearest_label": nearest,
                     "nearest_label_distance_mupdf": float(nearest_dist),
                     "nearest_label_score": float(label_score),
-                })
-                continue
-            pts = points_for_drawings([d], spacing=0.20, curve_steps=32)
-            if pts.shape[0] < 5:
-                continue
-            desc = descriptor_for_drawings([d], pts)
-            best_t = None
-            best_score = None
-            for t in templates:
-                s = score_candidate_against_template(pts, desc, t, label_score)
-                if best_score is None or s["confidence"] > best_score["confidence"]:
-                    best_score = s
-                    best_t = t
-            if not best_t or not best_score:
-                continue
-            family = best_t.get("symbol_family")
-            output_id = best_t.get("output_template_id") or best_t.get("template_id")
-            raw_reasons = []
-            tb_for_scale = best_t.get("descriptor", {})
-            tbw_for_scale = float(tb_for_scale.get("bbox_width") or max(r.width, r.height, 1.0))
-            cand_scale_for_reject = max(float(r.width), float(r.height)) / max(tbw_for_scale, 1e-9)
-            if cand_scale_for_reject < 0.35:
-                raw_reasons.append("scale_too_small_for_source_template")
-            if cand_scale_for_reject > 2.75:
-                raw_reasons.append("scale_too_large_for_source_template")
-            if best_score["confidence"] < threshold:
-                raw_reasons.append("below_threshold")
-            if best_score["chamfer"] > 0.085 and best_score["confidence"] < threshold + 0.06:
-                raw_reasons.append("shape_chamfer_too_high")
-            if family in GENERIC_FAMILIES and label_score <= 0.0:
-                raw_reasons.append("generic_symbol_without_waypoint_label_context")
-            # The open diamond/circle waypoint is very distinctive in these PDFs; nearby labels are still
-            # preferred but not required when the vector shape is excellent.
-            if output_id == "open_diamond_circle_waypoint" and best_score["chamfer"] < 0.035:
-                raw_reasons = [x for x in raw_reasons if x != "generic_symbol_without_waypoint_label_context"]
-            rec_common = {
-                "page": page_no,
-                "candidate_index": ci,
-                "bbox_mupdf": _rect_tuple(r),
-                "center_mupdf": [float(center[0]), float(center[1])],
-                "candidate_path_id": int(d.get("path_id", -1)),
-                "candidate_item_count": len(d.get("items", []) or []),
-                "template_id": output_id,
-                "source_template_id": best_t.get("template_id"),
-                "source_symbol_family": family,
-                "confidence": float(best_score["confidence"]),
-                "score": {k: float(v) if isinstance(v, (float, int)) else v for k, v in best_score.items()},
-                "nearest_label": nearest,
-                "nearest_label_distance_mupdf": float(nearest_dist),
-                "nearest_label_score": float(label_score),
+                }
+                candidate_box_records.append({"bbox_mupdf": c["bbox_mupdf"], "label": f"{ci}:{rec_common['confidence']:.2f}", "color": "orange"})
+                if raw_reasons:
+                    all_rejected.append({**rec_common, "reject_reasons": raw_reasons})
+                    continue
+                bbox_pdf = mupdf_rect_to_pdf(page, r)
+                centerpdf = center_pdf(page, r)
+                width = bbox_pdf[2] - bbox_pdf[0]
+                height = bbox_pdf[3] - bbox_pdf[1]
+                template_bbox = best_t.get("descriptor", {})
+                tbw = float(template_bbox.get("bbox_width") or max(width, height, 1.0))
+                scale = max(float(r.width), float(r.height)) / max(tbw, 1e-9)
+                rotation_out = float(best_score.get("rotation_degrees", 0.0))
+                # Diamond/circle and circled-star symbols have rotational symmetry, so the
+                # normalized Chamfer search may choose any equivalent quadrant. Report the
+                # canonical page orientation as 0 degrees and retain the raw scorer value in debug.
+                if family in {"open_diamond_circle", "filled_diamond_star", "circled_star"}:
+                    rotation_out = 0.0
+                match = {
+                    **rec_common,
+                    "bbox_pdf": [round(float(x), 4) for x in bbox_pdf],
+                    "center_pdf": [round(float(x), 4) for x in centerpdf],
+                    "width": round(float(width), 4),
+                    "height": round(float(height), 4),
+                    "rotation_degrees": round(rotation_out, 4),
+                    "scale": round(float(scale), 4),
+                    "method": "vector_normalized_chamfer_with_label_affinity",
+                }
+                all_matches.append(match)
+
+            if debug:
+                with open(debug_dir / f"{pdf_path.stem}_page_{page_no:03d}_raw_candidates.json", "w", encoding="utf-8") as f:
+                    json.dump(candidates, f, ensure_ascii=False, indent=2, default=str)
+                # Draw only likely candidate boxes to avoid unreadable overlay. Final overlay is drawn after dedupe.
+                draw_mupdf_boxes(page, candidate_box_records[:300], debug_dir / f"{pdf_path.stem}_page_{page_no:03d}_candidate_boxes.png", dpi=180, width=2)
+
+        matches = assign_unique_labels(dedupe_matches(all_matches), labels_by_page)
+        # Round confidence after dedupe.
+        for m in matches:
+            m["confidence"] = round(float(m["confidence"]), 4)
+            m["score"]["confidence"] = round(float(m["score"]["confidence"]), 4)
+
+        result = {
+            "target_pdf": pdf_path.name,
+            "coordinate_system": {
+                "space": "PDF user space",
+                "origin": "bottom-left",
+                "units": "points",
+                "page_rotation_applied": False,
+            },
+            "page_reports": page_reports,
+            "matches": matches,
+            "rejected_count": len(all_rejected),
+            "templates_loaded": [t.get("template_id") for t in templates],
+        }
+        if naip_root:
+            airport = (airport_icao or infer_airport_icao(pdf_path) or "").upper() or None
+            coordinate_index = NaipCoordinateIndex(naip_root=naip_root)
+            gcps, coordinate_misses = build_ground_control_points(matches, coordinate_index, airport, page_reports)
+            write_gcps(out_dir, gcps)
+            georef = {
+                "airport_icao": airport,
+                "naip_root": str(naip_root),
+                "gcp_count": len(gcps),
+                "geometry": gcp_geometry_status(gcps),
+                "coordinate_misses": coordinate_misses,
             }
-            candidate_box_records.append({"bbox_mupdf": c["bbox_mupdf"], "label": f"{ci}:{rec_common['confidence']:.2f}", "color": "orange"})
-            if raw_reasons:
-                all_rejected.append({**rec_common, "reject_reasons": raw_reasons})
-                continue
-            bbox_pdf = mupdf_rect_to_pdf(page, r)
-            centerpdf = center_pdf(page, r)
-            width = bbox_pdf[2] - bbox_pdf[0]
-            height = bbox_pdf[3] - bbox_pdf[1]
-            template_bbox = best_t.get("descriptor", {})
-            tbw = float(template_bbox.get("bbox_width") or max(width, height, 1.0))
-            scale = max(float(r.width), float(r.height)) / max(tbw, 1e-9)
-            rotation_out = float(best_score.get("rotation_degrees", 0.0))
-            # Diamond/circle and circled-star symbols have rotational symmetry, so the
-            # normalized Chamfer search may choose any equivalent quadrant. Report the
-            # canonical page orientation as 0 degrees and retain the raw scorer value in debug.
-            if family in {"open_diamond_circle", "filled_diamond_star", "circled_star"}:
-                rotation_out = 0.0
-            match = {
-                **rec_common,
-                "bbox_pdf": [round(float(x), 4) for x in bbox_pdf],
-                "center_pdf": [round(float(x), 4) for x in centerpdf],
-                "width": round(float(width), 4),
-                "height": round(float(height), 4),
-                "rotation_degrees": round(rotation_out, 4),
-                "scale": round(float(scale), 4),
-                "method": "vector_normalized_chamfer_with_label_affinity",
-            }
-            all_matches.append(match)
+            result["georeferencing"] = georef
+
+        with open(out_dir / "results.json", "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+        with open(out_dir / "results.jsonl", "w", encoding="utf-8") as f:
+            for m in matches:
+                f.write(json.dumps(m, ensure_ascii=False) + "\n")
+        with open(out_dir / "rejected_candidates.json", "w", encoding="utf-8") as f:
+            json.dump(all_rejected, f, ensure_ascii=False, indent=2)
+        with open(out_dir / "summary.csv", "w", newline="", encoding="utf-8") as f:
+            cols = [
+                "page",
+                "template_id",
+                "source_template_id",
+                "bbox_pdf",
+                "center_pdf",
+                "width",
+                "height",
+                "rotation_degrees",
+                "scale",
+                "confidence",
+                "method",
+                "candidate_path_id",
+                "nearest_label_text",
+                "nearest_label_context",
+                "nearest_label_kind",
+                "nearest_label_score",
+                "point_identifier",
+                "latitude",
+                "longitude",
+                "coordinate_source",
+            ]
+            writer = csv.DictWriter(f, fieldnames=cols)
+            writer.writeheader()
+            for m in matches:
+                lab = m.get("nearest_label") or {}
+                row = {k: m.get(k) for k in cols}
+                row["bbox_pdf"] = json.dumps(m.get("bbox_pdf"))
+                row["center_pdf"] = json.dumps(m.get("center_pdf"))
+                row["nearest_label_text"] = lab.get("text")
+                row["nearest_label_context"] = lab.get("context_text")
+                row["nearest_label_kind"] = lab.get("kind")
+                row["nearest_label_score"] = m.get("nearest_label_score")
+                world = m.get("world_coordinate") or {}
+                row["point_identifier"] = m.get("point_identifier")
+                row["latitude"] = world.get("latitude")
+                row["longitude"] = world.get("longitude")
+                row["coordinate_source"] = world.get("source")
+                writer.writerow(row)
 
         if debug:
-            with open(debug_dir / f"{pdf_path.stem}_page_{page_no:03d}_raw_candidates.json", "w", encoding="utf-8") as f:
-                json.dump(candidates, f, ensure_ascii=False, indent=2, default=str)
-            # Draw only likely candidate boxes to avoid unreadable overlay. Final overlay is drawn after dedupe.
-            draw_mupdf_boxes(page, candidate_box_records[:300], debug_dir / f"{pdf_path.stem}_page_{page_no:03d}_candidate_boxes.png", dpi=180, width=2)
-
-    matches = assign_unique_labels(dedupe_matches(all_matches), labels_by_page)
-    # Round confidence after dedupe.
-    for m in matches:
-        m["confidence"] = round(float(m["confidence"]), 4)
-        m["score"]["confidence"] = round(float(m["score"]["confidence"]), 4)
-
-    result = {
-        "target_pdf": pdf_path.name,
-        "coordinate_system": {
-            "space": "PDF user space",
-            "origin": "bottom-left",
-            "units": "points",
-            "page_rotation_applied": False,
-        },
-        "page_reports": page_reports,
-        "matches": matches,
-        "rejected_count": len(all_rejected),
-        "templates_loaded": [t.get("template_id") for t in templates],
-    }
-    if naip_root:
-        airport = (airport_icao or infer_airport_icao(pdf_path) or "").upper() or None
-        coordinate_index = NaipCoordinateIndex(naip_root=naip_root)
-        gcps, coordinate_misses = build_ground_control_points(matches, coordinate_index, airport, page_reports)
-        write_gcps(out_dir, gcps)
-        georef = {
-            "airport_icao": airport,
-            "naip_root": str(naip_root),
-            "gcp_count": len(gcps),
-            "geometry": gcp_geometry_status(gcps),
-            "coordinate_misses": coordinate_misses,
-        }
-        result["georeferencing"] = georef
-
-    with open(out_dir / "results.json", "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-    with open(out_dir / "results.jsonl", "w", encoding="utf-8") as f:
-        for m in matches:
-            f.write(json.dumps(m, ensure_ascii=False) + "\n")
-    with open(out_dir / "rejected_candidates.json", "w", encoding="utf-8") as f:
-        json.dump(all_rejected, f, ensure_ascii=False, indent=2)
-    with open(out_dir / "summary.csv", "w", newline="", encoding="utf-8") as f:
-        cols = [
-            "page",
-            "template_id",
-            "source_template_id",
-            "bbox_pdf",
-            "center_pdf",
-            "width",
-            "height",
-            "rotation_degrees",
-            "scale",
-            "confidence",
-            "method",
-            "candidate_path_id",
-            "nearest_label_text",
-            "nearest_label_context",
-            "nearest_label_kind",
-            "nearest_label_score",
-            "point_identifier",
-            "latitude",
-            "longitude",
-            "coordinate_source",
-        ]
-        writer = csv.DictWriter(f, fieldnames=cols)
-        writer.writeheader()
-        for m in matches:
-            lab = m.get("nearest_label") or {}
-            row = {k: m.get(k) for k in cols}
-            row["bbox_pdf"] = json.dumps(m.get("bbox_pdf"))
-            row["center_pdf"] = json.dumps(m.get("center_pdf"))
-            row["nearest_label_text"] = lab.get("text")
-            row["nearest_label_context"] = lab.get("context_text")
-            row["nearest_label_kind"] = lab.get("kind")
-            row["nearest_label_score"] = m.get("nearest_label_score")
-            world = m.get("world_coordinate") or {}
-            row["point_identifier"] = m.get("point_identifier")
-            row["latitude"] = world.get("latitude")
-            row["longitude"] = world.get("longitude")
-            row["coordinate_source"] = world.get("source")
-            writer.writerow(row)
-
-    if debug:
-        # Final overlay per page.
-        by_page = {}
-        for m in matches:
-            by_page.setdefault(m["page"], []).append(m)
-        for page_no, ms in by_page.items():
-            page = doc[page_no - 1]
-            boxes = []
-            for m in ms:
-                label = f"{m['template_id']} {m['confidence']:.2f}"
-                lab = m.get("nearest_label") or {}
-                if lab.get("text"):
-                    label += f" {lab['text']}"
-                    if lab.get("context_text") and lab.get("context_text") != lab.get("text"):
-                        label += f" [{lab['context_text']}]"
-                boxes.append({"bbox_mupdf": m["bbox_mupdf"], "label": label, "color": "red"})
-            draw_mupdf_boxes(page, boxes, debug_dir / f"{pdf_path.stem}_page_{page_no:03d}_matches.png", dpi=240, width=4)
+            # Final overlay per page.
+            by_page = {}
+            for m in matches:
+                by_page.setdefault(m["page"], []).append(m)
+            for page_no, ms in by_page.items():
+                page = doc[page_no - 1]
+                boxes = []
+                for m in ms:
+                    label = f"{m['template_id']} {m['confidence']:.2f}"
+                    lab = m.get("nearest_label") or {}
+                    if lab.get("text"):
+                        label += f" {lab['text']}"
+                        if lab.get("context_text") and lab.get("context_text") != lab.get("text"):
+                            label += f" [{lab['context_text']}]"
+                    boxes.append({"bbox_mupdf": m["bbox_mupdf"], "label": label, "color": "red"})
+                draw_mupdf_boxes(page, boxes, debug_dir / f"{pdf_path.stem}_page_{page_no:03d}_matches.png", dpi=240, width=4)
+    finally:
+        doc.close()
     return result

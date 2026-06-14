@@ -329,7 +329,11 @@ def solve_affine(src: Sequence[tuple[float, float]], dst: Sequence[tuple[float, 
         matrix.append([0.0, 0.0, 0.0, dx, dy, 1.0])
         target.append(sx)
         target.append(sy)
-    coeffs = np.linalg.solve(np.asarray(matrix, dtype=float), np.asarray(target, dtype=float))
+    # Least-squares handles the overdetermined case (>3 GCP pairs); np.linalg.solve
+    # requires a square matrix and would raise for any patch with more than 3 points.
+    coeffs, *_ = np.linalg.lstsq(
+        np.asarray(matrix, dtype=float), np.asarray(target, dtype=float), rcond=None
+    )
     return tuple(float(v) for v in coeffs)
 
 

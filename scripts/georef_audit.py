@@ -12,7 +12,6 @@ import argparse
 import csv
 import importlib.util
 import json
-import math
 import sys
 import time
 from collections import Counter
@@ -51,85 +50,70 @@ def waypoint_pdfs_for(pdf: Path) -> list[Path]:
     return sorted(airport_dir.glob("*-0W-*.pdf"))
 
 
-def mercator_to_lonlat(g, x: float, y: float) -> tuple[float, float]:
-    lon = x / g.EARTH_RADIUS_M * 180.0 / math.pi
-    lat = (2.0 * math.atan(math.exp(y / g.EARTH_RADIUS_M)) - math.pi / 2.0) * 180.0 / math.pi
-    return lon, lat
-
-
-def extract_controls(g, page, designated, terminal_locations, navaid):
-    controls = g.extract_waypoint_symbol_controls(page, terminal_locations, navaid, set())
-    existing = {p.waypoint for p in controls}
-    extra = g.extract_all_fix_controls(page, designated, terminal_locations, navaid, existing)
-    controls.extend(extra)
-    existing.update(p.waypoint for p in extra)
-    controls.extend(g.extract_navaid_controls(page, navaid, existing))
-    return controls
+def _worst_first(controls: Sequence[dict]) -> list[dict]:
+    """Audit rows from process_pdf, ordered by largest residual first."""
+    return [
+        {
+            "name": c.get("waypoint"),
+            "source": c.get("source"),
+            "x": round(float(c.get("mupdfX") or 0.0), 2),
+            "y": round(float(c.get("mupdfY") or 0.0), 2),
+            "residual_m": round(c["residualMeters"], 1)
+            if c.get("residualMeters") is not None
+            else None,
+            "used": bool(c.get("used")),
+        }
+        for c in sorted(
+            controls,
+            key=lambda c: (c.get("residualMeters") is None, -(c.get("residualMeters") or 0.0)),
+        )
+    ]
 
 
 def audit_pdf(g, pdf: Path, csv_dir: Path, page_number: Optional[int] = None) -> list[dict]:
-    designated = g.load_designated_points(csv_dir)
-    navaid = g.load_navaid_points(csv_dir)
-    terminal_locations = {}
-    for waypoint_pdf in waypoint_pdfs_for(pdf):
-        terminal_locations.update(g._extract_waypoints_from_pdf(waypoint_pdf))
+    page_results = g.process_pdf(pdf, csv_dir, waypoint_pdfs_for(pdf), page_number)
 
     rows: list[dict] = []
-    with g.fitz.open(pdf) as doc:
-        pages = [(page_number, doc.load_page(page_number - 1))] if page_number else list(enumerate(doc, 1))
-        for page_index, page in pages:
-            controls = extract_controls(g, page, designated, terminal_locations, navaid)
-            transform, rmse = g.fit_page_transform(controls)
-            used = [p for p in controls if p.used_for_georef]
-            residuals = [
-                {
-                    "name": p.waypoint,
-                    "source": p.source,
-                    "x": round(p.mupdf_x, 2),
-                    "y": round(p.mupdf_y, 2),
-                    "residual_m": round(p.georef_residual_meters, 1)
-                    if p.georef_residual_meters is not None
-                    else None,
-                    "used": p.used_for_georef,
-                }
-                for p in sorted(
-                    controls,
-                    key=lambda p: (p.georef_residual_meters is None, -(p.georef_residual_meters or 0)),
-                )
-            ]
-            rows.append(
-                {
-                    "pdf": str(pdf),
-                    "airport": pdf.parent.name,
-                    "page": page_index,
-                    "georeferenced": transform is not None,
-                    "rmse_m": round(rmse, 1) if rmse is not None else None,
-                    "controls": len(controls),
-                    "used": len(used),
-                    "source_counts": dict(Counter(p.source for p in controls)),
-                    "used_source_counts": dict(Counter(p.source for p in used)),
-                    "worst": residuals[:8],
-                }
-            )
+    for res in page_results:
+        controls = res.get("control_points") or []
+        used = [c for c in controls if c.get("used")]
+        rmse = res.get("rmse_meters")
+        rows.append(
+            {
+                "pdf": str(pdf),
+                "airport": pdf.parent.name,
+                "page": res.get("page"),
+                "georeferenced": bool(res.get("georeferenced")),
+                "rmse_m": round(rmse, 1) if rmse is not None else None,
+                "controls": res.get("control_point_count", len(controls)),
+                "used": res.get("inlier_count", len(used)),
+                "source_counts": dict(Counter(c.get("source") for c in controls)),
+                "used_source_counts": dict(Counter(c.get("source") for c in used)),
+                "worst": _worst_first(controls)[:8],
+            }
+        )
     return rows
 
 
 def annotate_pdf(g, pdf: Path, csv_dir: Path, output: Path, page_number: int = 1) -> None:
-    designated = g.load_designated_points(csv_dir)
-    navaid = g.load_navaid_points(csv_dir)
-    terminal_locations = {}
-    for waypoint_pdf in waypoint_pdfs_for(pdf):
-        terminal_locations.update(g._extract_waypoints_from_pdf(waypoint_pdf))
+    page_results = g.process_pdf(pdf, csv_dir, waypoint_pdfs_for(pdf), page_number)
+    res = next((r for r in page_results if r.get("page") == page_number), None)
+    if res is None:
+        raise SystemExit(f"page {page_number} not found in {pdf}")
+
+    controls = res.get("control_points") or []
+    rmse = res.get("rmse_meters")
 
     with g.fitz.open(pdf) as doc:
         page = doc.load_page(page_number - 1)
-        controls = extract_controls(g, page, designated, terminal_locations, navaid)
-        _, rmse = g.fit_page_transform(controls)
-        for p in controls:
-            color = (0, 0.65, 0) if p.used_for_georef else (1, 0, 0)
-            page.draw_circle((p.mupdf_x, p.mupdf_y), 5, color=color, width=1.4)
-            residual = "" if p.georef_residual_meters is None else f" {p.georef_residual_meters:.0f}"
-            page.insert_text((p.mupdf_x + 6, p.mupdf_y - 6), f"{p.waypoint}{residual}", fontsize=7, color=color)
+        for c in controls:
+            color = (0, 0.65, 0) if c.get("used") else (1, 0, 0)
+            x = float(c.get("mupdfX") or 0.0)
+            y = float(c.get("mupdfY") or 0.0)
+            page.draw_circle((x, y), 5, color=color, width=1.4)
+            residual_m = c.get("residualMeters")
+            residual = "" if residual_m is None else f" {residual_m:.0f}"
+            page.insert_text((x + 6, y - 6), f"{c.get('waypoint')}{residual}", fontsize=7, color=color)
         label = f"RMSE {rmse:.1f}m, controls {len(controls)}" if rmse is not None else f"no fit, controls {len(controls)}"
         page.insert_text((40, 40), label, fontsize=10, color=(0, 0, 1))
         pix = page.get_pixmap(matrix=g.fitz.Matrix(2.0, 2.0), alpha=False)

@@ -94,7 +94,11 @@ function localMetersToLonLat(
   const lon = normalizeLongitude(
     model.originLon + (east / (radius * cosLat)) * (180 / Math.PI)
   );
-  const lat = model.originLat + (north / radius) * (180 / Math.PI);
+  const lat = clamp(
+    model.originLat + (north / radius) * (180 / Math.PI),
+    -90,
+    90
+  );
   return [lon, lat];
 }
 

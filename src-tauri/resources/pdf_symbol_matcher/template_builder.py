@@ -201,82 +201,85 @@ def build_template_library(
     (out_dir / "debug").mkdir(exist_ok=True)
 
     doc = fitz.open(source_pdf)
-    page_index = page_number - 1
-    page = doc[page_index]
-    drawings = extract_drawings(page, extended=True)
-    dump_drawings_json(drawings, out_dir / "debug" / f"source_page_{page_number:03d}_raw_vectors.json")
+    try:
+        page_index = page_number - 1
+        page = doc[page_index]
+        drawings = extract_drawings(page, extended=True)
+        dump_drawings_json(drawings, out_dir / "debug" / f"source_page_{page_number:03d}_raw_vectors.json")
 
-    defs = list(template_defs or PAGE5_WAYPOINT_TEMPLATES)
-    all_boxes = []
-    templates = []
+        defs = list(template_defs or PAGE5_WAYPOINT_TEMPLATES)
+        all_boxes = []
+        templates = []
 
-    for spec in defs:
-        bbox_mupdf = list(map(float, spec["bbox_mupdf"]))
-        selected = select_drawings_by_bbox(drawings, bbox_mupdf, mode="intersects")
-        # Keep the source selection tight: a zero-width path can require an expanded bbox, but
-        # these hand-reviewed boxes already isolate the symbols.
-        pts = points_for_drawings(selected, spacing=0.20, curve_steps=32)
-        norm_pts = normalize_points(pts)
-        desc = descriptor_for_drawings(selected, pts)
-        source_bbox = drawing_bbox(selected) if selected else fitz.Rect(bbox_mupdf)
-        source_bbox_pdf = mupdf_rect_to_pdf(page, source_bbox)
-        preview = f"previews/{spec['template_id']}.png"
-        norm_preview = f"normalized/{spec['template_id']}_normalized.png"
-        crop_mupdf(page, bbox_mupdf, out_dir / preview, dpi=dpi, pad_pts=3.0)
-        normalized_points_preview(norm_pts, out_dir / norm_preview)
+        for spec in defs:
+            bbox_mupdf = list(map(float, spec["bbox_mupdf"]))
+            selected = select_drawings_by_bbox(drawings, bbox_mupdf, mode="intersects")
+            # Keep the source selection tight: a zero-width path can require an expanded bbox, but
+            # these hand-reviewed boxes already isolate the symbols.
+            pts = points_for_drawings(selected, spacing=0.20, curve_steps=32)
+            norm_pts = normalize_points(pts)
+            desc = descriptor_for_drawings(selected, pts)
+            source_bbox = drawing_bbox(selected) if selected else fitz.Rect(bbox_mupdf)
+            source_bbox_pdf = mupdf_rect_to_pdf(page, source_bbox)
+            preview = f"previews/{spec['template_id']}.png"
+            norm_preview = f"normalized/{spec['template_id']}_normalized.png"
+            crop_mupdf(page, bbox_mupdf, out_dir / preview, dpi=dpi, pad_pts=3.0)
+            normalized_points_preview(norm_pts, out_dir / norm_preview)
 
-        record = {
-            "template_id": spec["template_id"],
-            "output_template_id": spec.get("output_template_id", spec["template_id"]),
-            "name_zh": spec.get("name_zh"),
-            "symbol_family": spec.get("symbol_family"),
+            record = {
+                "template_id": spec["template_id"],
+                "output_template_id": spec.get("output_template_id", spec["template_id"]),
+                "name_zh": spec.get("name_zh"),
+                "symbol_family": spec.get("symbol_family"),
+                "source_pdf": str(source_pdf.name),
+                "source_page": page_number,
+                "source_bbox_mupdf": [float(x) for x in source_bbox],
+                "selection_bbox_mupdf": bbox_mupdf,
+                "source_bbox_pdf": source_bbox_pdf,
+                "normalized_points": norm_pts.tolist(),
+                "descriptor": desc,
+                "visual_hash": desc.get("visual_hash"),
+                "raw_paths": [serialize_drawing(d) for d in selected],
+                "raw_path_ids": [int(d.get("path_id", -1)) for d in selected],
+                "preview_image": preview,
+                "normalized_preview_image": norm_preview,
+                "approved": bool(spec.get("active_for_matching", True)),
+                "active_for_matching": bool(spec.get("active_for_matching", True)),
+            }
+            templates.append(record)
+            with open(out_dir / "templates" / f"{spec['template_id']}.json", "w", encoding="utf-8") as f:
+                json.dump(record, f, ensure_ascii=False, indent=2)
+            all_boxes.append({"bbox_mupdf": bbox_mupdf, "label": spec["template_id"], "color": "red"})
+
+        draw_mupdf_boxes(page, all_boxes, out_dir / "debug" / f"source_page_{page_number:03d}_waypoint_symbols.png", dpi=200)
+
+        library = {
+            "schema_version": "0.2",
             "source_pdf": str(source_pdf.name),
             "source_page": page_number,
-            "source_bbox_mupdf": [float(x) for x in source_bbox],
-            "selection_bbox_mupdf": bbox_mupdf,
-            "source_bbox_pdf": source_bbox_pdf,
-            "normalized_points": norm_pts.tolist(),
-            "descriptor": desc,
-            "visual_hash": desc.get("visual_hash"),
-            "raw_paths": [serialize_drawing(d) for d in selected],
-            "raw_path_ids": [int(d.get("path_id", -1)) for d in selected],
-            "preview_image": preview,
-            "normalized_preview_image": norm_preview,
-            "approved": bool(spec.get("active_for_matching", True)),
-            "active_for_matching": bool(spec.get("active_for_matching", True)),
+            "coordinate_system_internal": {
+                "space": "MuPDF/PyMuPDF page coordinates",
+                "origin": "top-left",
+                "units": "points",
+            },
+            "coordinate_system_output": {
+                "space": "PDF user space",
+                "origin": "bottom-left",
+                "units": "points",
+                "page_rotation_applied": False,
+            },
+            "page_report": page_coordinate_report(page),
+            "templates": templates,
+            "notes": [
+                "Templates are hand-reviewed vector crops from page 5, section 4 空域点.",
+                "The rnav_required and fly_by symbols are visually near-identical open diamond/circle symbols in this source; target matches may be canonicalized as open_diamond_circle_waypoint.",
+                "Raw vector paths are preserved in each template JSON; normalized_points are used for geometric matching.",
+            ],
         }
-        templates.append(record)
-        with open(out_dir / "templates" / f"{spec['template_id']}.json", "w", encoding="utf-8") as f:
-            json.dump(record, f, ensure_ascii=False, indent=2)
-        all_boxes.append({"bbox_mupdf": bbox_mupdf, "label": spec["template_id"], "color": "red"})
-
-    draw_mupdf_boxes(page, all_boxes, out_dir / "debug" / f"source_page_{page_number:03d}_waypoint_symbols.png", dpi=200)
-
-    library = {
-        "schema_version": "0.2",
-        "source_pdf": str(source_pdf.name),
-        "source_page": page_number,
-        "coordinate_system_internal": {
-            "space": "MuPDF/PyMuPDF page coordinates",
-            "origin": "top-left",
-            "units": "points",
-        },
-        "coordinate_system_output": {
-            "space": "PDF user space",
-            "origin": "bottom-left",
-            "units": "points",
-            "page_rotation_applied": False,
-        },
-        "page_report": page_coordinate_report(page),
-        "templates": templates,
-        "notes": [
-            "Templates are hand-reviewed vector crops from page 5, section 4 空域点.",
-            "The rnav_required and fly_by symbols are visually near-identical open diamond/circle symbols in this source; target matches may be canonicalized as open_diamond_circle_waypoint.",
-            "Raw vector paths are preserved in each template JSON; normalized_points are used for geometric matching.",
-        ],
-    }
-    with open(out_dir / "library.json", "w", encoding="utf-8") as f:
-        json.dump(library, f, ensure_ascii=False, indent=2)
+        with open(out_dir / "library.json", "w", encoding="utf-8") as f:
+            json.dump(library, f, ensure_ascii=False, indent=2)
+    finally:
+        doc.close()
     return library
 
 

@@ -125,6 +125,10 @@ function newestMtimeMs(inputPath) {
     if (entry.name === "__pycache__" || entry.name === ".pyinstaller") {
       continue;
     }
+    // Don't follow symlinks: a directory cycle would recurse until the stack overflows.
+    if (entry.isSymbolicLink()) {
+      continue;
+    }
     newest = Math.max(newest, newestMtimeMs(join(inputPath, entry.name)));
   }
   return newest;
@@ -171,6 +175,8 @@ function main() {
   requirePythonModule(python, "fitz", "PyMuPDF");
   requirePythonModule(python, "numpy");
   requirePythonModule(python, "pyproj");
+  requirePythonModule(python, "scipy");
+  requirePythonModule(python, "PIL", "Pillow");
   requirePythonModule(python, "PyInstaller");
 
   const pyinstallerArgs = [
@@ -193,6 +199,10 @@ function main() {
     "numpy",
     "--collect-all",
     "pyproj",
+    "--collect-all",
+    "scipy",
+    "--collect-all",
+    "PIL",
     "--add-data",
     `${matcherPath}${pyinstallerDataSeparator}pdf_symbol_matcher`,
     "--add-data",

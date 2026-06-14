@@ -21,6 +21,7 @@ export function useGdl90(port: number | undefined) {
     }
 
     let unlisten: (() => void) | null = null;
+    let cancelled = false;
 
     const setup = async () => {
       try {
@@ -30,7 +31,9 @@ export function useGdl90(port: number | undefined) {
         return;
       }
 
-      unlisten = await listen<OwnshipPosition>("gdl90-position", (event) => {
+      if (cancelled) return;
+
+      const dispose = await listen<OwnshipPosition>("gdl90-position", (event) => {
         setPosition(event.payload);
 
         if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
@@ -39,11 +42,20 @@ export function useGdl90(port: number | undefined) {
           staleTimerRef.current = null;
         }, STALE_TIMEOUT_MS);
       });
+
+      // The component may have unmounted while `listen` was pending; if so,
+      // tear down immediately so we don't leak the event handler.
+      if (cancelled) {
+        dispose();
+        return;
+      }
+      unlisten = dispose;
     };
 
     void setup();
 
     return () => {
+      cancelled = true;
       if (staleTimerRef.current) {
         clearTimeout(staleTimerRef.current);
         staleTimerRef.current = null;

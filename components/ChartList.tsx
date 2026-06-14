@@ -81,8 +81,8 @@ export default function ChartList({
       if (b === "其他") return -1;
 
       // Extract numeric part for comparison
-      const aNum = parseInt(a.replace(/[LRC]/g, ""));
-      const bNum = parseInt(b.replace(/[LRC]/g, ""));
+      const aNum = parseInt(a.replace(/[LRC]/g, ""), 10);
+      const bNum = parseInt(b.replace(/[LRC]/g, ""), 10);
 
       if (aNum !== bNum) return aNum - bNum;
 

@@ -1131,15 +1131,19 @@ export default function Home() {
       ? groupedCharts[selectedAirport]?.[selectedCategory] || []
       : [];
 
-  const categoryCounts: Record<ChartCategory, number> = CATEGORY_ORDER.reduce(
-    (acc, category) => {
-      acc[category] = getChartListDisplayCount(
-        groupedCharts[selectedAirport]?.[category] ?? [],
-        category
-      );
-      return acc;
-    },
-    {} as Record<ChartCategory, number>
+  const categoryCounts: Record<ChartCategory, number> = useMemo(
+    () =>
+      CATEGORY_ORDER.reduce(
+        (acc, category) => {
+          acc[category] = getChartListDisplayCount(
+            groupedCharts[selectedAirport]?.[category] ?? [],
+            category
+          );
+          return acc;
+        },
+        {} as Record<ChartCategory, number>
+      ),
+    [groupedCharts, selectedAirport]
   );
 
   if (loading) {
@@ -1286,7 +1290,10 @@ export default function Home() {
 
       {/* Georef error toast */}
       {georefError && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-red-600 text-white text-sm rounded-lg shadow-lg pointer-events-none">
+        <div
+          role="alert"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-red-600 text-white text-sm rounded-lg shadow-lg pointer-events-none"
+        >
           {georefError}
         </div>
       )}

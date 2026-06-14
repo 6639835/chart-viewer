@@ -86,7 +86,7 @@ export function sortTaxiCharts(charts: ChartData[]): ChartData[] {
       if (!match) return { prefix: 0, letter: "", suffix: "", rest: page };
 
       return {
-        prefix: parseInt(match[1]) || 0,
+        prefix: parseInt(match[1], 10) || 0,
         letter: match[2] || "",
         suffix: match[3] || "",
         rest: match[4] || "",

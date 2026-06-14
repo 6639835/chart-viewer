@@ -82,7 +82,6 @@ export default function Sidebar({
             }}
             className="w-full bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white px-2 py-2 rounded flex flex-col items-center justify-center hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors group"
             title={selectedAirport}
-            aria-label={selectedAirport}
             aria-expanded={isAirportDropdownOpen}
             aria-haspopup="listbox"
           >

@@ -4,14 +4,16 @@ import csv
 import json
 import math
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 import fitz
 
 
-DEFAULT_NAIP_ROOT = Path("/Users/lujuncheng/Downloads/NAIP+")
+# Developer-only default; production callers pass naip_root=None so an
+# unconfigured index fails loudly rather than silently probing a missing path.
+DEFAULT_NAIP_ROOT = None
 WAYPOINT_COORDINATE_CHART_NAME = "\u822a\u8def\u70b9\u5750\u6807"
 CSV_ENCODINGS = ("utf-8-sig", "gb18030", "gbk")
 ROLE_LABELS = {"IAF", "IF", "FAF", "FAP", "MAPT", "MAHF", "ARP"}
@@ -57,10 +59,15 @@ def _open_csv(path: Path):
     for encoding in CSV_ENCODINGS:
         try:
             f = path.open("r", encoding=encoding, newline="")
+        except UnicodeDecodeError as exc:
+            last_error = exc
+            continue
+        try:
             f.read(2048)
             f.seek(0)
             return f
         except UnicodeDecodeError as exc:
+            f.close()
             last_error = exc
     if last_error:
         raise last_error
@@ -116,10 +123,17 @@ def identifier_candidates_for_match(match: dict) -> list[str]:
 class NaipCoordinateIndex:
     def __init__(
         self,
-        naip_root: str | Path = DEFAULT_NAIP_ROOT,
+        naip_root: str | Path | None = DEFAULT_NAIP_ROOT,
         csv_dir: str | Path | None = None,
         charts_dir: str | Path | None = None,
     ) -> None:
+        if naip_root is None:
+            if not csv_dir:
+                raise ValueError(
+                    "NaipCoordinateIndex requires naip_root or csv_dir to be set"
+                )
+            # Anchor relative lookups at the CSV directory's parent.
+            naip_root = Path(csv_dir).parent
         self.naip_root = Path(naip_root)
         self.csv_dir = Path(csv_dir) if csv_dir else self.naip_root / "CSV"
         self.charts_dir = Path(charts_dir) if charts_dir else self.naip_root / "charts"
@@ -226,63 +240,63 @@ class NaipCoordinateIndex:
 
 def parse_waypoint_coordinate_pdf(pdf_path: str | Path, row_tolerance: float = 4.0) -> list[Coordinate]:
     pdf_path = Path(pdf_path)
-    doc = fitz.open(pdf_path)
     coordinates: list[Coordinate] = []
     seen: set[str] = set()
 
-    for page in doc:
-        words = page.get_text("words", sort=False)
-        ids = []
-        coord_words = []
-        for w in words:
-            x0, y0, x1, y1, text = w[:5]
-            token = _clean_identifier(text)
-            parsed = parse_coordinate_pair(str(text))
-            if parsed:
-                coord_words.append(
-                    {
-                        "x0": float(x0),
-                        "x1": float(x1),
-                        "cy": (float(y0) + float(y1)) / 2.0,
-                        "text": str(text),
-                        "parsed": parsed,
-                    }
-                )
-            elif token not in ROLE_LABELS and POINT_ID_RE.match(token):
-                ids.append(
-                    {
-                        "identifier": token,
-                        "x0": float(x0),
-                        "x1": float(x1),
-                        "cy": (float(y0) + float(y1)) / 2.0,
-                    }
-                )
+    with fitz.open(pdf_path) as doc:
+        for page in doc:
+            words = page.get_text("words", sort=False)
+            ids = []
+            coord_words = []
+            for w in words:
+                x0, y0, x1, y1, text = w[:5]
+                token = _clean_identifier(text)
+                parsed = parse_coordinate_pair(str(text))
+                if parsed:
+                    coord_words.append(
+                        {
+                            "x0": float(x0),
+                            "x1": float(x1),
+                            "cy": (float(y0) + float(y1)) / 2.0,
+                            "text": str(text),
+                            "parsed": parsed,
+                        }
+                    )
+                elif token not in ROLE_LABELS and POINT_ID_RE.match(token):
+                    ids.append(
+                        {
+                            "identifier": token,
+                            "x0": float(x0),
+                            "x1": float(x1),
+                            "cy": (float(y0) + float(y1)) / 2.0,
+                        }
+                    )
 
-        for ident in ids:
-            same_row = [
-                c
-                for c in coord_words
-                if abs(c["cy"] - ident["cy"]) <= row_tolerance and c["x0"] >= ident["x1"]
-            ]
-            if not same_row:
-                continue
-            coord_word = min(same_row, key=lambda c: c["x0"] - ident["x1"])
-            identifier = ident["identifier"]
-            if identifier in seen:
-                continue
-            lat, lon = coord_word["parsed"]
-            coordinates.append(
-                Coordinate(
-                    identifier=identifier,
-                    latitude=lat,
-                    longitude=lon,
-                    raw_latitude=coord_word["text"],
-                    raw_longitude=coord_word["text"],
-                    source="waypoint_coordinate_chart",
-                    source_path=str(pdf_path),
+            for ident in ids:
+                same_row = [
+                    c
+                    for c in coord_words
+                    if abs(c["cy"] - ident["cy"]) <= row_tolerance and c["x0"] >= ident["x1"]
+                ]
+                if not same_row:
+                    continue
+                coord_word = min(same_row, key=lambda c: c["x0"] - ident["x1"])
+                identifier = ident["identifier"]
+                if identifier in seen:
+                    continue
+                lat, lon = coord_word["parsed"]
+                coordinates.append(
+                    Coordinate(
+                        identifier=identifier,
+                        latitude=lat,
+                        longitude=lon,
+                        raw_latitude=coord_word["text"],
+                        raw_longitude=coord_word["text"],
+                        source="waypoint_coordinate_chart",
+                        source_path=str(pdf_path),
+                    )
                 )
-            )
-            seen.add(identifier)
+                seen.add(identifier)
 
     return coordinates
 
@@ -392,7 +406,7 @@ def write_gcps(out_dir: str | Path, gcps: Sequence[GroundControlPoint]) -> None:
     with (out_dir / "gcps.json").open("w", encoding="utf-8") as f:
         json.dump([asdict(g) for g in gcps], f, ensure_ascii=False, indent=2)
     with (out_dir / "gcps.csv").open("w", newline="", encoding="utf-8") as f:
-        fieldnames = list(asdict(gcps[0]).keys()) if gcps else [field.name for field in GroundControlPoint.__dataclass_fields__.values()]
+        fieldnames = [field.name for field in fields(GroundControlPoint)]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for gcp in gcps:

@@ -41,6 +41,11 @@ struct Gdl90State {
     port: AtomicU16,
     /// Signal the listener thread to stop.
     stop: AtomicBool,
+    /// Bumped every time a listener is (re)started or stopped. Each thread
+    /// captures the generation it was spawned with and exits as soon as the
+    /// shared value moves past it, so a restart can never leave the previous
+    /// thread alive racing on an overlapping socket.
+    generation: AtomicU64,
 }
 
 #[derive(Default)]
@@ -60,6 +65,7 @@ impl Default for Gdl90State {
         Self {
             port: AtomicU16::new(0),
             stop: AtomicBool::new(false),
+            generation: AtomicU64::new(0),
         }
     }
 }
@@ -219,7 +225,10 @@ fn parse_gdl90_datagram(buf: &[u8]) -> Option<OwnshipPosition> {
 #[tauri::command]
 fn start_gdl90_listener(app: AppHandle, port: u16) -> Result<(), String> {
     let state = app.state::<Arc<Gdl90State>>();
-    // Stop any existing listener.
+    // Invalidate any existing listener: bumping the generation makes the
+    // previous thread (if any) exit on its next loop iteration regardless of
+    // how the stop flag is toggled below.
+    let my_gen = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
     state.stop.store(true, Ordering::SeqCst);
     if port == 0 {
         state.port.store(0, Ordering::SeqCst);
@@ -236,7 +245,9 @@ fn start_gdl90_listener(app: AppHandle, port: u16) -> Result<(), String> {
     thread::spawn(move || {
         let mut buf = [0u8; 4096];
         loop {
-            if stop_flag.stop.load(Ordering::SeqCst) {
+            if stop_flag.stop.load(Ordering::SeqCst)
+                || stop_flag.generation.load(Ordering::SeqCst) != my_gen
+            {
                 break;
             }
             match socket.recv(&mut buf) {
@@ -258,6 +269,7 @@ fn start_gdl90_listener(app: AppHandle, port: u16) -> Result<(), String> {
 #[tauri::command]
 fn stop_gdl90_listener(app: AppHandle) {
     let state = app.state::<Arc<Gdl90State>>();
+    state.generation.fetch_add(1, Ordering::SeqCst);
     state.stop.store(true, Ordering::SeqCst);
     state.port.store(0, Ordering::SeqCst);
 }
@@ -734,12 +746,23 @@ fn parse_range_header(range_header: Option<&str>, file_len: u64) -> RangeRequest
 }
 
 fn serve_pdf_file(pdf_path: &Path, range_header: Option<&str>) -> Response<Vec<u8>> {
-    let Ok(metadata) = fs::metadata(pdf_path) else {
-        return response(
+    let server_error = || {
+        response(
             500,
             "text/plain; charset=utf-8",
             b"Failed to load PDF".to_vec(),
-        );
+        )
+    };
+
+    // Open the file once and derive its length from the open descriptor. Reading
+    // through this same handle guarantees the Content-Length / Content-Range we
+    // advertise matches the bytes we actually return, even if the file is
+    // truncated or replaced between stat and read.
+    let Ok(mut file) = File::open(pdf_path) else {
+        return server_error();
+    };
+    let Ok(metadata) = file.metadata() else {
+        return server_error();
     };
     let file_len = metadata.len();
 
@@ -753,13 +776,13 @@ fn serve_pdf_file(pdf_path: &Path, range_header: Option<&str>) -> Response<Vec<u
                 );
             }
 
-            match fs::read(pdf_path) {
-                Ok(bytes) => pdf_response(200, bytes, None, file_len),
-                Err(_) => response(
-                    500,
-                    "text/plain; charset=utf-8",
-                    b"Failed to load PDF".to_vec(),
-                ),
+            let mut bytes = Vec::new();
+            match file.read_to_end(&mut bytes) {
+                Ok(_) => {
+                    let len = bytes.len() as u64;
+                    pdf_response(200, bytes, None, len)
+                }
+                Err(_) => server_error(),
             }
         }
         RangeRequest::Unsatisfiable => Response::builder()
@@ -791,10 +814,9 @@ fn serve_pdf_file(pdf_path: &Path, range_header: Option<&str>) -> Response<Vec<u
             };
 
             let mut body = vec![0; byte_count_usize];
-            let read_result = File::open(pdf_path).and_then(|mut file| {
-                file.seek(SeekFrom::Start(start))?;
-                file.read_exact(&mut body)
-            });
+            let read_result = file
+                .seek(SeekFrom::Start(start))
+                .and_then(|_| file.read_exact(&mut body));
 
             match read_result {
                 Ok(()) => pdf_response(
@@ -803,11 +825,7 @@ fn serve_pdf_file(pdf_path: &Path, range_header: Option<&str>) -> Response<Vec<u
                     Some(format!("bytes {start}-{end}/{file_len}")),
                     byte_count,
                 ),
-                Err(_) => response(
-                    500,
-                    "text/plain; charset=utf-8",
-                    b"Failed to load PDF".to_vec(),
-                ),
+                Err(_) => server_error(),
             }
         }
     }
