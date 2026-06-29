@@ -33,15 +33,18 @@ export function useGdl90(port: number | undefined) {
 
       if (cancelled) return;
 
-      const dispose = await listen<OwnshipPosition>("gdl90-position", (event) => {
-        setPosition(event.payload);
+      const dispose = await listen<OwnshipPosition>(
+        "gdl90-position",
+        (event) => {
+          setPosition(event.payload);
 
-        if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
-        staleTimerRef.current = setTimeout(() => {
-          setPosition(null);
-          staleTimerRef.current = null;
-        }, STALE_TIMEOUT_MS);
-      });
+          if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
+          staleTimerRef.current = setTimeout(() => {
+            setPosition(null);
+            staleTimerRef.current = null;
+          }, STALE_TIMEOUT_MS);
+        }
+      );
 
       // The component may have unmounted while `listen` was pending; if so,
       // tear down immediately so we don't leak the event handler.

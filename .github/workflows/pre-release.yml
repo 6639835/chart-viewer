@@ -24,14 +24,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
         include:
           - os: macos-latest
-            artifact_name: mac
+            artifact_name: macos-arm64
+            bundles: dmg,app
+          - os: macos-15-intel
+            artifact_name: macos-x64
+            bundles: dmg,app
           - os: ubuntu-latest
-            artifact_name: linux
+            artifact_name: linux-x64
+            bundles: appimage,deb
           - os: windows-latest
-            artifact_name: windows
+            artifact_name: windows-x64
+            bundles: nsis
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -72,15 +77,24 @@ jobs:
       - name: Install georeferencing sidecar dependencies
         run: python -m pip install -r scripts/georef-sidecar-requirements.txt
 
+      - name: Build georeferencing sidecar
+        run: npm run georef:sidecar
+
+      - name: Verify georeferencing sidecar
+        run: node scripts/verify-tauri-release-package.mjs --sidecar-only
+
       - name: Test
         run: npm run test
 
       - name: Build Tauri app
-        run: npm run tauri:build -- --config '{"bundle":{"createUpdaterArtifacts":true}}'
+        run: npm run tauri:build -- --bundles ${{ matrix.bundles }} --config '{"bundle":{"createUpdaterArtifacts":true}}'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Verify release package
+        run: node scripts/verify-tauri-release-package.mjs
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

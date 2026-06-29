@@ -140,6 +140,22 @@ async function main() {
     throw new Error(`No updater packages found in ${artifactsDir}`);
   }
 
+  const requiredTargets = [
+    "darwin-aarch64",
+    "darwin-x86_64",
+    "linux-x86_64",
+    "windows-x86_64",
+  ];
+  for (const requiredTarget of requiredTargets) {
+    if (
+      !Object.keys(platforms).some((target) =>
+        target.startsWith(requiredTarget)
+      )
+    ) {
+      throw new Error(`Missing updater package for ${requiredTarget}`);
+    }
+  }
+
   const manifest = {
     version,
     pub_date: new Date().toISOString(),
