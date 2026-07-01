@@ -26,8 +26,8 @@ const MAX_PDF_RANGE_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
 const GEOREF_TIMEOUT: Duration = Duration::from_secs(90);
 const MAX_GEOREF_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const GEOREF_CACHE_DIR: &str = "georef-cache";
-const GEOREF_CACHE_VERSION: &str = "reference-symbol-matcher-v1";
-const GEOREF_PRELOAD_BATCH_SIZE: usize = 1;
+const GEOREF_CACHE_VERSION: &str = "reference-symbol-matcher-v2";
+const GEOREF_PRELOAD_BATCH_SIZE: usize = 16;
 const GEOREF_PRELOAD_MAX_WORKERS: usize = 4;
 
 #[derive(Default)]
@@ -490,7 +490,13 @@ fn validate_directory(label: &str, dir_path: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn decode_gbk(bytes: &[u8]) -> String {
+fn decode_csv_text(bytes: &[u8]) -> String {
+    let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
+
+    if let Ok(content) = std::str::from_utf8(bytes) {
+        return content.to_string();
+    }
+
     let (content, _, _) = GBK.decode(bytes);
     content.into_owned()
 }
@@ -512,7 +518,7 @@ fn detect_format(csv_dir: &Path) -> &'static str {
         return "new";
     };
 
-    let content = decode_gbk(&buffer);
+    let content = decode_csv_text(&buffer);
     let trimmed = content.trim();
     let lines: Vec<&str> = trimmed.lines().collect();
 
@@ -536,7 +542,7 @@ fn load_old_format(csv_dir: &Path) -> Result<Vec<ChartSource>, String> {
     Ok(vec![ChartSource {
         format: "old".to_string(),
         airport_icao: None,
-        content: decode_gbk(&buffer),
+        content: decode_csv_text(&buffer),
     }])
 }
 
@@ -549,7 +555,7 @@ fn load_new_format(csv_dir: &Path) -> Result<Vec<ChartSource>, String> {
             sources.push(ChartSource {
                 format: "new".to_string(),
                 airport_icao: Some(airport_icao),
-                content: decode_gbk(&buffer),
+                content: decode_csv_text(&buffer),
             });
         }
     }
@@ -571,7 +577,7 @@ fn load_new_format(csv_dir: &Path) -> Result<Vec<ChartSource>, String> {
         sources.push(ChartSource {
             format: "new".to_string(),
             airport_icao: Some(airport_icao),
-            content: decode_gbk(&buffer),
+            content: decode_csv_text(&buffer),
         });
     }
 
@@ -1046,7 +1052,7 @@ fn load_airport_coords_from_csv(csv_dir: &Path) -> Vec<AirportCoord> {
         let Ok(buffer) = fs::read(&path) else {
             continue;
         };
-        let content = decode_gbk(&buffer);
+        let content = decode_csv_text(&buffer);
         let mut lines = content.lines();
         let header_line = match lines.next() {
             Some(h) => h,
@@ -1539,6 +1545,9 @@ fn run_georef_batch(app: &AppHandle, csv_dir: &Path, jobs: &[PreloadJob]) -> Geo
             let mut failed = jobs.len().saturating_sub(output.results.len());
             for job_result in output.results {
                 if !job_result.ok {
+                    if let Some(error) = job_result.error {
+                        eprintln!("Georef preload job {} failed: {error}", job_result.id);
+                    }
                     failed += 1;
                     continue;
                 }
@@ -1554,10 +1563,13 @@ fn run_georef_batch(app: &AppHandle, csv_dir: &Path, jobs: &[PreloadJob]) -> Geo
                 failed,
             }
         }
-        Err(_) => GeorefBatchStats {
-            processed: jobs.len(),
-            failed: jobs.len(),
-        },
+        Err(error) => {
+            eprintln!("Georef preload batch failed: {error}");
+            GeorefBatchStats {
+                processed: jobs.len(),
+                failed: jobs.len(),
+            }
+        }
     }
 }
 
@@ -1887,6 +1899,20 @@ mod tests {
         assert!(parse_dms_to_decimal("东1160000").is_none());
         assert_eq!(parse_dms_to_decimal("N400000"), Some(40.0));
         assert_eq!(parse_dms_to_decimal("W1163000"), Some(-116.5));
+    }
+
+    #[test]
+    fn decodes_csv_text_as_utf8_or_gbk() {
+        assert_eq!(
+            decode_csv_text("ChartTypeEx_CH\n机场细则\n".as_bytes()),
+            "ChartTypeEx_CH\n机场细则\n"
+        );
+
+        let (gbk_bytes, _, _) = GBK.encode("ChartTypeEx_CH\n机场细则\n");
+        assert_eq!(
+            decode_csv_text(gbk_bytes.as_ref()),
+            "ChartTypeEx_CH\n机场细则\n"
+        );
     }
 
     #[test]

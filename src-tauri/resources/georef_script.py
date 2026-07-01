@@ -67,7 +67,11 @@ class ExplicitWaypointCoordinateIndex(NaipCoordinateIndex):
         waypoint_pdfs: Sequence[Path],
         charts_dir: Optional[Path] = None,
     ) -> None:
-        super().__init__(naip_root=csv_dir.parent, csv_dir=csv_dir, charts_dir=charts_dir or csv_dir)
+        super().__init__(
+            naip_root=csv_dir.parent,
+            csv_dir=csv_dir,
+            charts_dir=charts_dir or csv_dir.parent / "charts",
+        )
         self._explicit_waypoint_pdfs = [p for p in waypoint_pdfs if p.is_file()]
 
     def chart_points_for_airport(self, airport_icao: str):

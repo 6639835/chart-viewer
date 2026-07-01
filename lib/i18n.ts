@@ -360,9 +360,13 @@ export const chartTypeLabels: Record<Locale, ChartTypeTranslations> = {
   "en-US": {
     机场细则: "Airport Details",
     其他: "Other",
+    机场概要: "Airport Overview",
+    机场区域图: "Airport Area Chart",
     机场图_停机位置图: "Airport / Parking Chart",
+    机场平面图: "Airport Layout / Taxi Chart",
     标准仪表进场图: "STAR",
     标准仪表离场图: "SID",
+    进近图: "Approach",
     仪表进近图_ILS: "ILS Approach",
     进近图_RNAV_RNP_RADAR_GPS_GNSS: "RNAV/RNP/Radar/GPS/GNSS Approach",
     机场障碍物图_精密进近地形图:
@@ -375,9 +379,13 @@ export const chartTypeLabels: Record<Locale, ChartTypeTranslations> = {
   "zh-CN": {
     机场细则: "机场细则",
     其他: "其他",
+    机场概要: "机场概要",
+    机场区域图: "机场区域图",
     机场图_停机位置图: "机场图_停机位置图",
+    机场平面图: "机场平面图",
     标准仪表进场图: "标准仪表进场图",
     标准仪表离场图: "标准仪表离场图",
+    进近图: "进近图",
     仪表进近图_ILS: "仪表进近图_ILS",
     进近图_RNAV_RNP_RADAR_GPS_GNSS: "进近图_RNAV_RNP_RADAR_GPS_GNSS",
     机场障碍物图_精密进近地形图: "机场障碍物图_精密进近地形图",
